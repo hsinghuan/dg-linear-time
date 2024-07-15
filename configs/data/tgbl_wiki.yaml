@@ -1,0 +1,5 @@
+_target_: src.data.tgbl_datamodule.TGBLDataModule
+dataset_name: tgbl-wiki
+batch_size: 200
+num_workers: 0
+pin_memory: False

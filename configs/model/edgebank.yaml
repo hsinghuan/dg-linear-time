@@ -1,0 +1,3 @@
+_target_: src.models.edgebank.EdgeBank
+
+memory_mode: unlimited

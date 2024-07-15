@@ -1,0 +1,17 @@
+defaults:
+  - _self_
+  - data: tgbl_wiki # choose datamodule with `test_dataloader()` for evaluation
+  - model: edgebank
+  - logger: null
+  - trainer: default
+  - paths: default
+  - extras: default
+  - hydra: default
+
+task_name: "eval"
+
+tags: ["dev"]
+
+# passing checkpoint path is necessary for evaluation
+ckpt_path: null
+seed: 1
