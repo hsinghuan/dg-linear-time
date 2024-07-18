@@ -28,7 +28,6 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     if cfg.get("seed"):
         L.seed_everything(cfg.seed, workers=True)
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)
-    print(cfg.model)
     model: LightningModule = hydra.utils.instantiate(cfg.model)
     callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"))
     logger: List[Logger] = instantiate_loggers(cfg.get("logger"))

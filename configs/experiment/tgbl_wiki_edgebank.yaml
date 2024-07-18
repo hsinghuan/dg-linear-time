@@ -9,8 +9,5 @@ logger:
     tags: ${tags}
     group: tgbl-wiki-edgebank
 
-task_name: "eval"
 
 tags: ["dev"]
-
-ckpt_path: null

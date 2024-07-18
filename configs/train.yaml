@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - data: tgbl-wiki
+  - data: tgbl_wiki
   - model: edgebank
   - callbacks: default
   - logger: wandb

@@ -23,7 +23,7 @@ def evaluate(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     :return: Tuple[dict, dict] with metrics and dict with all instantiated objects.
     """
     print("cfg", cfg)
-    if cfg.model._target_ != "src.models.edgebank.EdgeBank":
+    if cfg.model._target_ != "src.models.edgebank.EdgeBankModule":
         assert cfg.ckpt_path
 
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")

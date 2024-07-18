@@ -7,7 +7,7 @@ from src.data.tgbl_datamodule import Data
 from src.models.modules.edgebank_predictor import EdgeBankPredictor
 
 
-class EdgeBank(LightningModule):
+class EdgeBankModule(LightningModule):
     """LightningModule for the EdgeBank dynamic link prediction heuristic."""
 
     def __init__(
@@ -111,7 +111,6 @@ class EdgeBank(LightningModule):
 
     def on_test_epoch_end(self) -> None:
         """Aggregate testing performance."""
-        print(self.test_perf_list[:10], self.test_perf_list[-10:])
         self._aggregate_eval_log(self.test_perf_list, "test")
         self.test_perf_list = []
 

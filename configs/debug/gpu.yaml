@@ -1,7 +1,4 @@
 # @package _global_
-
-# overfits to 3 batches
-
 defaults:
   - default
 
