@@ -63,7 +63,8 @@ class EdgeBankModule(LightningModule):
         self._forward(batch, self.test_data, "test")
 
     def _forward(self, batch: torch.Tensor, data: Data, stage: str) -> None:
-        """Predict and evaluate per val/test batch."""
+        """Predict and evaluate per val/test batch, forward each sample and its negatives at a
+        time."""
         data_indices = batch.numpy()
         batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times = (
             data.src_node_ids[data_indices],

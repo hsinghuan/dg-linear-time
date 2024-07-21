@@ -17,11 +17,11 @@ seed: 1
 
 callbacks:
   early_stopping:
-    monitor: val/mrr
+    monitor: val/mrr_fast
     mode: max
     patience: 20
   model_checkpoint:
-    monitor: val/mrr
+    monitor: val/mrr_fast
     mode: max
 
 trainer:

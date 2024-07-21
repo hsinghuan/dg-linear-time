@@ -27,11 +27,15 @@ class TGBLDataModule(LightningDataModule):
     def __init__(
         self,
         dataset_name: str,
-        batch_size: int,
+        train_batch_size: int,
+        eval_batch_size: int,
+        fast_eval_batch_size: int,
+        fast_eval_neg_num: int,
         num_workers: int = 0,
         pin_memory: bool = False,
         sample_neighbor_strategy: str = "uniform",
         time_scaling_factor: float = 0.0,
+        partition: str = "full",
     ) -> None:
         super().__init__()
 
@@ -39,7 +43,11 @@ class TGBLDataModule(LightningDataModule):
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
         self.dataset_name = dataset_name
-        self.batch_size_per_device = batch_size
+        self.fast_eval_neg_num = fast_eval_neg_num
+        self.fast_eval = False
+        self.train_batch_size_per_device = train_batch_size
+        self.eval_batch_size_per_device = eval_batch_size
+        self.fast_eval_batch_size_per_device = fast_eval_batch_size
 
     def prepare_data(self) -> None:
         """Download data."""
@@ -49,11 +57,27 @@ class TGBLDataModule(LightningDataModule):
         """Load data."""
         # Divide batch size by the number of devices.
         if self.trainer is not None:
-            if self.hparams.batch_size % self.trainer.world_size != 0:
+            if self.hparams.train_batch_size % self.trainer.world_size != 0:
                 raise RuntimeError(
-                    f"Batch size ({self.hparams.batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."
+                    f"Train batch size ({self.hparams.train_batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."
                 )
-            self.batch_size_per_device = self.hparams.batch_size // self.trainer.world_size
+            if self.hparams.eval_batch_size % self.trainer.world_size != 0:
+                raise RuntimeError(
+                    f"Eval batch size ({self.hparams.eval_batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."
+                )
+            if self.hparams.fast_eval_batch_size % self.trainer.world_size != 0:
+                raise RuntimeError(
+                    f"Eval batch size ({self.hparams.fast_eval_batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."
+                )
+            self.train_batch_size_per_device = (
+                self.hparams.train_batch_size // self.trainer.world_size
+            )
+            self.eval_batch_size_per_device = (
+                self.hparams.eval_batch_size // self.trainer.world_size
+            )
+            self.fast_eval_batch_size_per_device = (
+                self.hparams.fast_eval_batch_size // self.trainer.world_size
+            )
 
         dataset = LinkPropPredDataset(name=self.hparams.dataset_name, preprocess=True)
         self.data = dataset.full_data
@@ -92,12 +116,59 @@ class TGBLDataModule(LightningDataModule):
 
         self.eval_metric_name = dataset.eval_metric
 
-        self.train_mask = dataset.train_mask
-        self.val_mask = dataset.val_mask
-        self.test_mask = dataset.test_mask
+        if self.hparams.partition == "full":
+            self.train_mask = dataset.train_mask
+            self.val_mask = dataset.val_mask
+            self.test_mask = dataset.test_mask
+        elif self.hparams.partition == "earlier" or self.hparams.partition == "later":
+            # partition == "earlier": use the first half of original train as train and val (80/20 split), and the original val as test
+            # partition == "later": use the second half of original train as train and val (80/20 split), and the original val as test
+            original_train_idx = np.nonzero(dataset.train_mask)[0]
+            original_train_num = len(original_train_idx)
+            new_train_num = int(original_train_num * 0.4)
+            new_val_num = int(original_train_num * 0.1)
+            train_mask = np.zeros_like(dataset.train_mask)
+            val_mask = np.zeros_like(dataset.val_mask)
+            if self.hparams.partition == "earlier":
+                train_mask[original_train_idx[:new_train_num]] = True
+                val_mask[original_train_idx[new_train_num : new_train_num + new_val_num]] = True
+            else:
+                train_mask[
+                    original_train_idx[
+                        new_train_num + new_val_num : 2 * new_train_num + new_val_num
+                    ]
+                ] = True
+                val_mask[original_train_idx[2 * new_train_num + new_val_num :]] = True
+            self.train_mask = train_mask
+            self.val_mask = val_mask
+            self.test_mask = dataset.val_mask
+
         self.eval_neg_edge_sampler = dataset.negative_sampler
         dataset.load_val_ns()
         dataset.load_test_ns()
+        # missing 1 negative sample of (src: 267, dst: 8806, t: 2057208) and (src: 267, dst: 9059, t: 2057208) in tgbl-wiki val negative set (should be 999)
+        # and missing 1 negative sample of (src: 2134, dst: 8314, t: 2461224) and (src: 2134, dst: 8545, t: 2461224) in tgbl-wiki test negative set (should be 999)
+        # repeat the last negative sample to make the negative set complete
+        if self.hparams.dataset_name == "tgbl-wiki":
+            arr = self.eval_neg_edge_sampler.eval_set["val"][(267, 8806, 2057208)]
+            self.eval_neg_edge_sampler.eval_set["val"][(267, 8806, 2057208)] = np.append(
+                arr, arr[-1]
+            )
+
+            arr = self.eval_neg_edge_sampler.eval_set["val"][(267, 9059, 2057208)]
+            self.eval_neg_edge_sampler.eval_set["val"][(267, 9059, 2057208)] = np.append(
+                arr, arr[-1]
+            )
+
+            arr = self.eval_neg_edge_sampler.eval_set["test"][(2134, 8314, 2461224)]
+            self.eval_neg_edge_sampler.eval_set["test"][(2134, 8314, 2461224)] = np.append(
+                arr, arr[-1]
+            )
+
+            arr = self.eval_neg_edge_sampler.eval_set["test"][(2134, 8545, 2461224)]
+            self.eval_neg_edge_sampler.eval_set["test"][(2134, 8545, 2461224)] = np.append(
+                arr, arr[-1]
+            )
 
         # note that in DyGLib's data preprocess pipeline, they add an extra node and edge with index 0 as the padded node/edge for convenience of model computation,
         # therefore, for TGB, they also manually add the extra node and edge with index 0
@@ -176,33 +247,69 @@ class TGBLDataModule(LightningDataModule):
         """Create and return train dataloader."""
         return get_idx_dataloader(
             indices_list=list(range(len(self.train_data.src_node_ids))),
-            batch_size=self.batch_size_per_device,
+            batch_size=self.train_batch_size_per_device,
             shuffle=False,
         )
 
     def val_dataloader(self):
         """Return validation dataloader."""
+        batch_size = (
+            self.fast_eval_batch_size_per_device
+            if self.fast_eval
+            else self.eval_batch_size_per_device
+        )
         return get_idx_dataloader(
             indices_list=list(range(len(self.val_data.src_node_ids))),
-            batch_size=self.batch_size_per_device,
+            batch_size=batch_size,
             shuffle=False,
         )
 
     def test_dataloader(self):
         """Return test dataloader."""
+        batch_size = (
+            self.fast_eval_batch_size_per_device
+            if self.fast_eval
+            else self.eval_batch_size_per_device
+        )
         return get_idx_dataloader(
             indices_list=list(range(len(self.test_data.src_node_ids))),
-            batch_size=self.batch_size_per_device,
+            batch_size=batch_size,
             shuffle=False,
         )
 
 
-if __name__ == "__main__":
-    datamodule = TGBLDataModule(dataset_name="tgbl-wiki", data_dir="datasets", batch_size=200)
-    datamodule.setup()
-    print(datamodule.node_raw_features.shape)
-    print(len(set(datamodule.src_node_ids) | set(datamodule.dst_node_ids)))
-    train_dataloader = datamodule.train_dataloader()
-    for batch in train_dataloader:
-        print(batch)
-        break
+# if __name__ == "__main__":
+#     import sys
+#     sys.path.append("../..")
+#     from src.utils.data import Data, get_idx_dataloader
+#     datamodule = TGBLDataModule(dataset_name="tgbl-wiki", train_batch_size=200, eval_batch_size=10, fast_eval_batch_size=200, fast_eval_neg_num=19, partition="full")
+#     datamodule.setup()
+#     print(datamodule.node_raw_features.shape)
+#     print(len(set(datamodule.src_node_ids) | set(datamodule.dst_node_ids)))
+#     train_dataloader = datamodule.train_dataloader()
+#     for batch in train_dataloader:
+#         print(batch)
+#         break
+
+#     neg_num = None
+#     for (pos_s, pos_d, pos_t), items in datamodule.eval_neg_edge_sampler.eval_set["val"].items():
+#         if neg_num is None:
+#             neg_num = len(items)
+#             print(f"neg num: {neg_num}")
+#         if neg_num is not None and len(items) != neg_num:
+#             print(f"pos s: {pos_s}, pos d: {pos_d}, pos t: {pos_t} does not have {neg_num} negative examples, have {len(items)} instead")
+
+#     neg_num = None
+#     for (pos_s, pos_d, pos_t), items in datamodule.eval_neg_edge_sampler.eval_set["test"].items():
+#         if neg_num is None:
+#             neg_num = len(items)
+#             print(f"neg num: {neg_num}")
+#         if neg_num is not None and len(items) != neg_num:
+#             print(f"pos s: {pos_s}, pos d: {pos_d}, pos t: {pos_t} does not have {neg_num} negative examples, have {len(items)} instead")
+
+
+#     datamodule = TGBLDataModule(dataset_name="tgbl-wiki", train_batch_size=200, eval_batch_size=10, fast_eval_batch_size=200, fast_eval_neg_num=19, partition="earlier")
+#     datamodule.setup()
+
+#     datamodule = TGBLDataModule(dataset_name="tgbl-wiki", train_batch_size=200, eval_batch_size=10, fast_eval_batch_size=200, fast_eval_neg_num=19, partition="later")
+#     datamodule.setup()

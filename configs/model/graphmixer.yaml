@@ -10,6 +10,7 @@ channel_dim_expansion_factor: 4.0
 dropout: 0.5
 num_neighbors: 30
 time_gap: 2000
+sample_neighbor_strategy: recent
 
 optimizer:
   _target_: torch.optim.Adam
