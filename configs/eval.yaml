@@ -3,7 +3,7 @@ defaults:
   - data: tgbl_wiki # choose datamodule with `test_dataloader()` for evaluation
   - model: edgebank
   - logger: null
-  - trainer: default
+  - trainer: gpu
   - paths: default
   - extras: default
   - hydra: default

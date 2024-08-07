@@ -33,9 +33,7 @@ class TGBLDataModule(LightningDataModule):
         fast_eval_neg_num: int,
         num_workers: int = 0,
         pin_memory: bool = False,
-        sample_neighbor_strategy: str = "uniform",
-        time_scaling_factor: float = 0.0,
-        partition: str = "full",
+        train_shuffle: bool = False,  # typically false for memory-based model
     ) -> None:
         super().__init__()
 
@@ -43,6 +41,7 @@ class TGBLDataModule(LightningDataModule):
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
         self.dataset_name = dataset_name
+        self.dataset_type = "tgbl"
         self.fast_eval_neg_num = fast_eval_neg_num
         self.fast_eval = False
         self.train_batch_size_per_device = train_batch_size
@@ -116,32 +115,9 @@ class TGBLDataModule(LightningDataModule):
 
         self.eval_metric_name = dataset.eval_metric
 
-        if self.hparams.partition == "full":
-            self.train_mask = dataset.train_mask
-            self.val_mask = dataset.val_mask
-            self.test_mask = dataset.test_mask
-        elif self.hparams.partition == "earlier" or self.hparams.partition == "later":
-            # partition == "earlier": use the first half of original train as train and val (80/20 split), and the original val as test
-            # partition == "later": use the second half of original train as train and val (80/20 split), and the original val as test
-            original_train_idx = np.nonzero(dataset.train_mask)[0]
-            original_train_num = len(original_train_idx)
-            new_train_num = int(original_train_num * 0.4)
-            new_val_num = int(original_train_num * 0.1)
-            train_mask = np.zeros_like(dataset.train_mask)
-            val_mask = np.zeros_like(dataset.val_mask)
-            if self.hparams.partition == "earlier":
-                train_mask[original_train_idx[:new_train_num]] = True
-                val_mask[original_train_idx[new_train_num : new_train_num + new_val_num]] = True
-            else:
-                train_mask[
-                    original_train_idx[
-                        new_train_num + new_val_num : 2 * new_train_num + new_val_num
-                    ]
-                ] = True
-                val_mask[original_train_idx[2 * new_train_num + new_val_num :]] = True
-            self.train_mask = train_mask
-            self.val_mask = val_mask
-            self.test_mask = dataset.val_mask
+        self.train_mask = dataset.train_mask
+        self.val_mask = dataset.val_mask
+        self.test_mask = dataset.test_mask
 
         self.eval_neg_edge_sampler = dataset.negative_sampler
         dataset.load_val_ns()
@@ -248,7 +224,7 @@ class TGBLDataModule(LightningDataModule):
         return get_idx_dataloader(
             indices_list=list(range(len(self.train_data.src_node_ids))),
             batch_size=self.train_batch_size_per_device,
-            shuffle=False,
+            shuffle=self.hparams.train_shuffle,
         )
 
     def val_dataloader(self):

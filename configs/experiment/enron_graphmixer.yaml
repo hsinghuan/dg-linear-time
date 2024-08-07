@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - override /data: tgbl_wiki
+  - override /data: enron
   - override /model: graphmixer
   - override /callbacks: default
   - override /trainer: gpu
@@ -9,7 +9,7 @@ defaults:
 logger:
   wandb:
     tags: ${tags}
-    group: tgbl-wiki-graphmixer
+    group: enron-graphmixer
 
 tags: ["dev"]
 
@@ -17,11 +17,11 @@ seed: 1
 
 callbacks:
   early_stopping:
-    monitor: val/mrr_fast
+    monitor: val/ap
     mode: max
     patience: 20
   model_checkpoint:
-    monitor: val/mrr_fast
+    monitor: val/ap
     mode: max
 
 trainer:
@@ -31,5 +31,10 @@ trainer:
   num_sanity_val_steps: 0
 
 model:
+  num_layers: 2
+  num_neighbors: 20
+  num_tokens: ${model.num_neighbors}
+  dropout: 0.5
+  sample_neighbor_strategy: recent
   optimizer:
-    lr: 0.0005
+    lr: 0.0001

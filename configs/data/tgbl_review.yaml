@@ -1,0 +1,9 @@
+_target_: src.data.tgbl_datamodule.TGBLDataModule
+dataset_name: tgbl-review
+train_batch_size: 4000
+eval_batch_size: 100
+fast_eval_batch_size: 4000
+fast_eval_neg_num: 1
+num_workers: 0
+pin_memory: False
+train_shuffle: false

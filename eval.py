@@ -6,6 +6,7 @@ from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 
 from src.utils.instantiators import instantiate_loggers
+from src.utils.logging_utils import log_hyperparameters
 from src.utils.pylogger import RankedLogger
 from src.utils.train_utils import task_wrapper
 
@@ -46,10 +47,12 @@ def evaluate(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         "trainer": trainer,
     }
 
-    # if logger:
-    #     log.info("Logging hyperparameters!")
-    #     log_hyperparameters(object_dict)
+    if logger:
+        log.info("Logging hyperparameters!")
+        log_hyperparameters(object_dict)
 
+    log.info("Starting validation!")
+    trainer.validate(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
     log.info("Starting testing!")
     trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
 
