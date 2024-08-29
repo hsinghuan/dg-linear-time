@@ -38,7 +38,7 @@ class DyGFormerModule(LinkPredictor):
         self.val_perf_list = []
         self.test_perf_list = []
 
-    def setup(self, stage: str) -> None:  # TODO: think about what to do when val or test is called
+    def setup(self, stage: str) -> None:
         """Build model dynamically at the beginning of fit (train + validate), validate, test, or
         predict."""
         super().setup(stage)
@@ -82,11 +82,19 @@ class DyGFormerModule(LinkPredictor):
         )
         batch_neg_src_node_ids = batch_src_node_ids
 
-        pos_scores = self._pred_scores(
-            batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times
-        )
-        neg_scores = self._pred_scores(
-            batch_neg_src_node_ids, batch_neg_dst_node_ids, batch_node_interact_times
+        # pos_scores = self._pred_scores(
+        #     batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times
+        # )
+        # neg_scores = self._pred_scores(
+        #     batch_neg_src_node_ids, batch_neg_dst_node_ids, batch_node_interact_times
+        # )
+        pos_scores, neg_scores = self._pred_pos_neg_scores(
+            pos_src=batch_src_node_ids,
+            pos_dst=batch_dst_node_ids,
+            pos_t=batch_node_interact_times,
+            neg_src=batch_neg_src_node_ids,
+            neg_dst=batch_neg_dst_node_ids,
+            neg_t=batch_node_interact_times,
         )
         self.train_pos_scores.append(pos_scores.detach())
         self.train_neg_scores.append(neg_scores.detach())
@@ -100,7 +108,25 @@ class DyGFormerModule(LinkPredictor):
 
         return loss
 
-    def _pred_scores(self, src: np.ndarray, dst: np.ndarray, t: np.ndarray) -> torch.Tensor:
+    def _pred_pos_neg_scores(
+        self,
+        pos_src: np.ndarray,
+        pos_dst: np.ndarray,
+        pos_t: np.ndarray,
+        neg_src: np.ndarray,
+        neg_dst: np.ndarray,
+        neg_t: np.ndarray,
+        **kwargs
+    ) -> torch.Tensor:
+        """Predict the probabilities/scores of (pos_src[i], pos_dst[i]) happening at time pos_t[i]
+        and (neg_src[i], neg_dst[i]) happening at time neg_t[i]."""
+        pos_scores = self._pred_scores(pos_src, pos_dst, pos_t)
+        neg_scores = self._pred_scores(neg_src, neg_dst, neg_t)
+        return pos_scores, neg_scores
+
+    def _pred_scores(
+        self, src: np.ndarray, dst: np.ndarray, t: np.ndarray, **kwargs
+    ) -> torch.Tensor:
         """Predict the probability/score of (src[i], dst[i]) happening at time t[i]."""
         src_node_embeddings, dst_node_embeddings = self.model[
             0

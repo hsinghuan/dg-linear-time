@@ -1,0 +1,16 @@
+_target_: src.models.tgn.TGNModule
+
+
+time_feat_dim: 100
+output_dim: 172
+num_layers: 1
+num_heads: 2
+dropout: 0.2
+num_neighbors: 10
+sample_neighbor_strategy: recent
+
+optimizer:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.0001
+  weight_decay: 0.0

@@ -101,10 +101,11 @@ class LinkPredictor(L.LightningModule):
         due to its efficiency.
         """
         data_indices = batch.cpu().numpy()
-        batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times = (
+        batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times, batch_edge_ids = (
             data.src_node_ids[data_indices],
             data.dst_node_ids[data_indices],
             data.node_interact_times[data_indices],
+            data.edge_ids[data_indices],
         )
 
         if self.dataset_type == "tgbl":
@@ -157,14 +158,23 @@ class LinkPredictor(L.LightningModule):
             batch_neg_node_interact_times = batch_node_interact_times
 
         # forward negative edges first because they do not change the memories of memory-based model
-        neg_scores = self._pred_scores(
-            src=batch_neg_src_node_ids,
-            dst=batch_neg_dst_node_ids,
-            t=batch_neg_node_interact_times,
-        )
+        # neg_scores = self._pred_scores(
+        #     src=batch_neg_src_node_ids,
+        #     dst=batch_neg_dst_node_ids,
+        #     t=batch_neg_node_interact_times,
+        # )
 
-        pos_scores = self._pred_scores(
-            src=batch_src_node_ids, dst=batch_dst_node_ids, t=batch_node_interact_times
+        # pos_scores = self._pred_scores(
+        #     src=batch_src_node_ids, dst=batch_dst_node_ids, t=batch_node_interact_times
+        # )
+        pos_scores, neg_scores = self._pred_pos_neg_scores(
+            pos_src=batch_src_node_ids,
+            pos_dst=batch_dst_node_ids,
+            pos_t=batch_node_interact_times,
+            neg_src=batch_neg_src_node_ids,
+            neg_dst=batch_neg_dst_node_ids,
+            neg_t=batch_neg_node_interact_times,
+            edge_ids=batch_edge_ids,
         )
 
         scores = torch.cat((pos_scores, neg_scores), dim=0)
@@ -202,8 +212,24 @@ class LinkPredictor(L.LightningModule):
                 else:
                     raise ValueError(f"Invalid stage: {stage}")
 
-    def _pred_scores(self, src: np.ndarray, dst: np.ndarray, t: np.ndarray) -> torch.Tensor:
-        """Predict the probability/score of (src[i], dst[i]) happening at time t[i]."""
+    def _pred_pos_neg_scores(
+        self,
+        pos_src: np.ndarray,
+        pos_dst: np.ndarray,
+        pos_t: np.ndarray,
+        neg_src: np.ndarray,
+        neg_dst: np.ndarray,
+        neg_t: np.ndarray,
+        **kwargs,
+    ):
+        """Predict the probabilities/scores of (pos_src[i], pos_dst[i]) happening at time pos_t[i]
+        and (neg_src[i], neg_dst[i]) happening at time neg_t[i]."""
+        raise NotImplementedError
+
+    def _pred_scores(
+        self, src: np.ndarray, dst: np.ndarray, t: np.ndarray, **kwargs
+    ) -> torch.Tensor:
+        """Predict the probabilities/scores of (src[i], dst[i]) happening at time t[i]."""
         raise NotImplementedError
 
     def on_train_epoch_end(self) -> None:
