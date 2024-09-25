@@ -26,6 +26,7 @@ class NonTGBLDataModule(LightningDataModule):
         num_workers: int = 0,
         pin_memory: bool = False,
         train_shuffle: bool = False,
+        negative_sample_strategy: str = "random",
     ) -> None:
         super().__init__()
         # this line allows to access init params with 'self.hparams' attribute
@@ -44,6 +45,7 @@ class NonTGBLDataModule(LightningDataModule):
 
         self.node_feat_dim = 172
         self.edge_feat_dim = 172
+        self.negative_sample_strategy = negative_sample_strategy
 
     def prepare_data(self) -> None:
         # name of original and preprocessed paths

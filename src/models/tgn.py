@@ -117,7 +117,8 @@ class TGNModule(LinkPredictor):
         # if validation is done during trainer.fit(), we need to backup the memory bank before validation
         # so that the memory bank can be reloaded after validation
         if self.fit:
-            self.train_backup_memory_bank = self.model[0].memory_bank.backup_memory_bank()
+            # self.train_backup_memory_bank = self.model[0].memory_bank.backup_memory_bank()
+            self.backup_train_memory_bank()
 
     def on_validation_epoch_start(self) -> None:
         """Set the neighbor sampler for validation."""
@@ -130,7 +131,8 @@ class TGNModule(LinkPredictor):
         # if validation is done during trainer.fit(), we need to reload the train backup memory bank after validation for saving
         # because the memory bank is updated (contaminated) during validation
         if self.fit:
-            self.model[0].memory_bank.reload_memory_bank(self.train_backup_memory_bank)
+            # self.model[0].memory_bank.reload_memory_bank(self.train_backup_memory_bank)
+            self.reload_train_memory_bank()
 
     def on_validation_end(self) -> None:
         """If called during trainer.validate(), set the flag to indicate that validation is done.
@@ -144,6 +146,22 @@ class TGNModule(LinkPredictor):
     def on_test_epoch_start(self) -> None:
         """Set the neighbor sampler for testing."""
         self.model[0].set_neighbor_sampler(self.full_neighbor_sampler)
+
+    def backup_train_memory_bank(self):
+        """Backup the memory bank before validation."""
+        self.train_backup_memory_bank = self.model[0].memory_bank.backup_memory_bank()
+
+    def reload_train_memory_bank(self):
+        """Reload the memory bank after validation."""
+        self.model[0].memory_bank.reload_memory_bank(self.train_backup_memory_bank)
+
+    def backup_val_memory_bank(self):
+        """Backup the memory bank before testing."""
+        self.val_backup_memory_bank = self.model[0].memory_bank.backup_memory_bank()
+
+    def reload_val_memory_bank(self):
+        """Reload the memory bank after testing."""
+        self.model[0].memory_bank.reload_memory_bank(self.val_backup_memory_bank)
 
     def _pred_pos_neg_scores(
         self,

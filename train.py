@@ -58,7 +58,23 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         if ckpt_path == "":
             log.warning("Best ckpt not found! Using current weights for testing...")
             ckpt_path = None
-        trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+        if "NonTGBLDataModule" in cfg.data._target_:
+            # if model is memory-based, we need to backup and reload the memory up to train manually because we repeatedly test below
+            is_memory_based = True if cfg.model in ["tgn", "dyrep", "jodie"] else False
+            datamodule.negative_sample_strategy = "random"
+            if is_memory_based:
+                model.backup_train_memory_bank()
+            trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            if is_memory_based:
+                model.reload_train_memory_bank()
+            datamodule.negative_sample_strategy = "historical"
+            trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            if is_memory_based:
+                model.reload_train_memory_bank()
+            datamodule.negative_sample_strategy = "inductive"
+            trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+        else:
+            trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
         log.info(f"Best ckpt path: {ckpt_path}")
 
     val_metrics = trainer.callback_metrics
@@ -69,7 +85,23 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         if ckpt_path == "":
             log.warning("Best ckpt not found! Using current weights for testing...")
             ckpt_path = None
-        trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+        if "NonTGBLDataModule" in cfg.data._target_:
+            # if model is memory-based, we need to backup and reload the memory up to validation manually because we repeatedly test below
+            is_memory_based = True if cfg.model in ["tgn", "dyrep", "jodie"] else False
+            datamodule.negative_sample_strategy = "random"
+            if is_memory_based:
+                model.backup_val_memory_bank()
+            trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            if is_memory_based:
+                model.reload_val_memory_bank()
+            datamodule.negative_sample_strategy = "historical"
+            trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            if is_memory_based:
+                model.reload_val_memory_bank()
+            datamodule.negative_sample_strategy = "inductive"
+            trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+        else:
+            trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
         log.info(f"Best ckpt path: {ckpt_path}")
 
     test_metrics = trainer.callback_metrics

@@ -72,16 +72,35 @@ class LinkPredictor(L.LightningModule):
             self.val_perf_list = []
             self.test_perf_list = []
         else:
-            self.val_neg_edge_sampler = NegativeEdgeSampler(
-                src_node_ids=self.full_data.src_node_ids,
-                dst_node_ids=self.full_data.dst_node_ids,
-                seed=0,
-            )
-            self.test_neg_edge_sampler = NegativeEdgeSampler(
-                src_node_ids=self.full_data.src_node_ids,
-                dst_node_ids=self.full_data.dst_node_ids,
-                seed=2,
-            )
+            self.negative_sample_strategy = self.trainer.datamodule.negative_sample_strategy
+            if self.negative_sample_strategy != "random":
+                self.val_neg_edge_sampler = NegativeEdgeSampler(
+                    src_node_ids=self.full_data.src_node_ids,
+                    dst_node_ids=self.full_data.dst_node_ids,
+                    interact_times=self.full_data.node_interact_times,
+                    last_observed_time=self.train_data.node_interact_times[-1],
+                    negative_sample_strategy=self.negative_sample_strategy,
+                    seed=0,
+                )
+                self.test_neg_edge_sampler = NegativeEdgeSampler(
+                    src_node_ids=self.full_data.src_node_ids,
+                    dst_node_ids=self.full_data.dst_node_ids,
+                    interact_times=self.full_data.node_interact_times,
+                    last_observed_time=self.val_data.node_interact_times[-1],
+                    negative_sample_strategy=self.negative_sample_strategy,
+                    seed=2,
+                )
+            else:
+                self.val_neg_edge_sampler = NegativeEdgeSampler(
+                    src_node_ids=self.full_data.src_node_ids,
+                    dst_node_ids=self.full_data.dst_node_ids,
+                    seed=0,
+                )
+                self.test_neg_edge_sampler = NegativeEdgeSampler(
+                    src_node_ids=self.full_data.src_node_ids,
+                    dst_node_ids=self.full_data.dst_node_ids,
+                    seed=2,
+                )
             self.val_perf_list = None  # no mrr to be recorded
             self.test_perf_list = None
             self.fast_eval = False  # no need for fast evaluation (because it's already fast)
@@ -270,21 +289,43 @@ class LinkPredictor(L.LightningModule):
         scores = torch.cat((pos_scores, neg_scores), dim=0)
         labels = torch.cat((torch.ones_like(pos_scores), torch.zeros_like(neg_scores)), dim=0)
 
-        if self.fit:
-            if self.fast_eval:
-                ap_log_name = f"{stage}/ap_fast"
-                auc_log_name = f"{stage}/auc_fast"
-                metric_log_name = f"{stage}/{self.metric}_fast"  # must be tgbl dataset
-            else:
-                ap_log_name = f"{stage}/ap"
-                auc_log_name = f"{stage}/auc"
-                if self.dataset_type == "tgbl":
+        if self.dataset_type == "tgbl":
+            if self.fit:
+                if self.fast_eval:
+                    ap_log_name = f"{stage}/ap_fast"
+                    auc_log_name = f"{stage}/auc_fast"
+                    metric_log_name = f"{stage}/{self.metric}_fast"
+                else:
+                    ap_log_name = f"{stage}/ap"
+                    auc_log_name = f"{stage}/auc"
                     metric_log_name = f"{stage}/{self.metric}"
-        else:
-            ap_log_name = f"{stage}/ap_final"
-            auc_log_name = f"{stage}/auc_final"
-            if self.dataset_type == "tgbl":
+            else:
+                ap_log_name = f"{stage}/ap_final"
+                auc_log_name = f"{stage}/auc_final"
                 metric_log_name = f"{stage}/{self.metric}_final"
+        else:
+            if self.fit:
+                ap_log_name = f"{stage}/{self.negative_sample_strategy}/ap"
+                auc_log_name = f"{stage}/{self.negative_sample_strategy}/auc"
+            else:
+                ap_log_name = f"{stage}/{self.negative_sample_strategy}/ap_final"
+                auc_log_name = f"{stage}/{self.negative_sample_strategy}/auc_final"
+
+        # if self.fit:
+        #     if self.fast_eval:
+        #         ap_log_name = f"{stage}/ap_fast"
+        #         auc_log_name = f"{stage}/auc_fast"
+        #         metric_log_name = f"{stage}/{self.metric}_fast"  # must be tgbl dataset
+        #     else:
+        #         ap_log_name = f"{stage}/ap"
+        #         auc_log_name = f"{stage}/auc"
+        #         if self.dataset_type == "tgbl":
+        #             metric_log_name = f"{stage}/{self.metric}"
+        # else:
+        #     ap_log_name = f"{stage}/ap_final"
+        #     auc_log_name = f"{stage}/auc_final"
+        #     if self.dataset_type == "tgbl":
+        #         metric_log_name = f"{stage}/{self.metric}_final"
 
         self.log(
             ap_log_name,

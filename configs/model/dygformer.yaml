@@ -10,7 +10,6 @@ num_heads: 2
 dropout: 0.1
 max_input_sequence_length: 32
 sample_neighbor_strategy: recent
-
 optimizer:
   _target_: torch.optim.Adam
   _partial_: true

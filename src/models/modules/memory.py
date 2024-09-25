@@ -1,14 +1,20 @@
 # Copied from https://github.com/yule-BUAA/DyGLib/blob/master/models/MemoryModel.py
 from collections import defaultdict
 
+import jax.np as jnp
 import numpy as np
 import torch
 import torch.nn as nn
 
 from src.models.modules.attn import MultiHeadAttention
+
+# # JAX S5 utilities
+# from src.models.modules.jax_ssm_init import make_DPLR_HiPPO
 from src.models.modules.mlp import MergeLayer
 from src.models.modules.time import TimeEncoder
 from src.utils.data import NeighborSampler
+
+# from src.models.modules.jax_ssm import StackedEncoderModel, init_S5SSM
 
 
 class MemoryModel(torch.nn.Module):
@@ -621,6 +627,88 @@ class RNNMemoryUpdater(MemoryUpdater):
         super().__init__(memory_bank)
 
         self.memory_updater = nn.RNNCell(input_size=message_dim, hidden_size=memory_dim)
+
+
+# # TODO: S5MemoryUpdater
+# class S5MemoryUpdater(MemoryUpdater):
+#     def __init__(
+#         self,
+#         memory_bank: MemoryBank,
+#         message_dim: int,
+#         memory_dim: int,
+#         n_layers: int,
+#         ssm_size: int,
+#         d_model: int,
+#         blocks: int,
+#         conj_sym: bool = True,
+#         C_init: str = "trunc_standard_normal",
+#         discretization: str = "zoh",
+#         dt_min: float = 0.001,
+#         dt_max: float = 0.1,
+#         clip_eigs: bool = False,
+#         bidirectional: bool = False,
+#         padded: bool = False,
+#         activation: str = "half_glu1",
+#         dropout: float = 0.0,
+#         training: bool = True,
+#         prenorm: bool = True,
+#         batchnorm: bool = True,
+#         bn_momentum: float = 0.95,
+#         step_rescale: float = 1.0,
+#         append_integration_timestep: bool = False,
+#         use_integration_timestep: bool = True,
+#     ):
+#         super().__init__(memory_bank)
+#         block_size = int(ssm_size / blocks)
+#         Lambda, _, B, V, B_orig = make_DPLR_HiPPO(block_size)
+#         if conj_sym:
+#             block_size = block_size // 2
+#             ssm_size = ssm_size // 2
+
+#         Lambda = Lambda[:block_size]
+#         V = V[:, :block_size]
+#         Vc = V.conj().T
+#         # If initializing state matrix A as block-diagonal, put HiPPO approximation
+#         # on each block
+#         Lambda = (Lambda * jnp.ones((blocks, block_size))).ravel()
+#         V = block_diag(*([V] * blocks))
+#         Vinv = block_diag(*([Vc] * blocks))
+#         print(f"Lambda.shape={Lambda.shape}")
+#         print(f"V.shape={V.shape}")
+#         print(f"Vinv.shape={Vinv.shape}")
+
+#         ssm_init_fn = init_S5SSM(
+#             H=d_model,
+#             P=ssm_size,
+#             Lambda_re_init=Lambda.real,
+#             Lambda_im_init=Lambda.imag,
+#             V=V,
+#             Vinv=Vinv,
+#             C_init=C_init,
+#             discretization=discretization,
+#             dt_min=dt_min,
+#             dt_max=dt_max,
+#             variable_observation_interval=True,
+#             conj_sym=conj_sym,
+#             clip_eigs=clip_eigs,
+#             bidirectional=bidirectional,
+#         )
+
+#         StackedEncoderModel(
+#             ssm=ssm_init_fn,
+#             d_model=d_model,
+#             n_layers=n_layers,
+#             padded=padded,
+#             activation=activation,
+#             dropout=dropout,
+#             training=training,
+#             prenorm=prenorm,
+#             batchnorm=batchnorm,
+#             bn_momentum=bn_momentum,
+#             step_rescale=step_rescale,
+#             append_integration_timestep=append_integration_timestep,
+#             use_integration_timestep=use_integration_timestep,
+#         )
 
 
 class TimeProjectionEmbedding(nn.Module):

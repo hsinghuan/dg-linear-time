@@ -52,9 +52,43 @@ def evaluate(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         log_hyperparameters(object_dict)
 
     log.info("Starting validation!")
-    trainer.validate(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+    # trainer.validate(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+    if "NonTGBLDataModule" in cfg.data._target_:
+        # if model is memory-based, we need to backup and reload the memory up to train manually because we repeatedly test below
+        is_memory_based = True if cfg.model in ["tgn", "dyrep", "jodie"] else False
+        datamodule.negative_sample_strategy = "random"
+        if is_memory_based:
+            model.backup_train_memory_bank()
+        trainer.validate(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+        if is_memory_based:
+            model.reload_train_memory_bank()
+        datamodule.negative_sample_strategy = "historical"
+        trainer.validate(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+        if is_memory_based:
+            model.reload_train_memory_bank()
+        datamodule.negative_sample_strategy = "inductive"
+        trainer.validate(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+    else:
+        trainer.validate(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
     log.info("Starting testing!")
-    trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+    # trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+    if "NonTGBLDataModule" in cfg.data._target_:
+        # if model is memory-based, we need to backup and reload the memory up to validation manually because we repeatedly test below
+        is_memory_based = True if cfg.model in ["tgn", "dyrep", "jodie"] else False
+        datamodule.negative_sample_strategy = "random"
+        if is_memory_based:
+            model.backup_val_memory_bank()
+        trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+        if is_memory_based:
+            model.reload_val_memory_bank()
+        datamodule.negative_sample_strategy = "historical"
+        trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+        if is_memory_based:
+            model.reload_val_memory_bank()
+        datamodule.negative_sample_strategy = "inductive"
+        trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+    else:
+        trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
 
     # for predictions use trainer.predict(...)
     # predictions = trainer.predict(model=model, dataloaders=dataloaders, ckpt_path=cfg.ckpt_path)
