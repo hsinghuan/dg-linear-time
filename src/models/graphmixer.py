@@ -101,7 +101,7 @@ class GraphMixerModule(LinkPredictor):
 
         loss = self.loss_func(input=predicts, target=labels)
 
-        self.log("train/loss", loss, on_step=True, on_epoch=False, prog_bar=True)
+        self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
 
         return loss
 

@@ -177,15 +177,6 @@ class LinkPredictor(L.LightningModule):
             batch_neg_node_interact_times = batch_node_interact_times
 
         # forward negative edges first because they do not change the memories of memory-based model
-        # neg_scores = self._pred_scores(
-        #     src=batch_neg_src_node_ids,
-        #     dst=batch_neg_dst_node_ids,
-        #     t=batch_neg_node_interact_times,
-        # )
-
-        # pos_scores = self._pred_scores(
-        #     src=batch_src_node_ids, dst=batch_dst_node_ids, t=batch_node_interact_times
-        # )
         pos_scores, neg_scores = self._pred_pos_neg_scores(
             pos_src=batch_src_node_ids,
             pos_dst=batch_dst_node_ids,
@@ -199,7 +190,7 @@ class LinkPredictor(L.LightningModule):
         scores = torch.cat((pos_scores, neg_scores), dim=0)
         labels = torch.cat((torch.ones_like(pos_scores), torch.zeros_like(neg_scores)), dim=0)
         loss = self.loss_func(input=scores, target=labels)
-        self.log(f"{stage}/loss", loss, on_step=True, on_epoch=False, prog_bar=True)
+        self.log(f"{stage}/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
 
         if stage == "val":
             self.val_pos_scores.append(pos_scores)
@@ -291,6 +282,7 @@ class LinkPredictor(L.LightningModule):
 
         if self.dataset_type == "tgbl":
             if self.fit:
+                progress_bar = True
                 if self.fast_eval:
                     ap_log_name = f"{stage}/ap_fast"
                     auc_log_name = f"{stage}/auc_fast"
@@ -300,14 +292,17 @@ class LinkPredictor(L.LightningModule):
                     auc_log_name = f"{stage}/auc"
                     metric_log_name = f"{stage}/{self.metric}"
             else:
+                progress_bar = False
                 ap_log_name = f"{stage}/ap_final"
                 auc_log_name = f"{stage}/auc_final"
                 metric_log_name = f"{stage}/{self.metric}_final"
         else:
             if self.fit:
+                progress_bar = True
                 ap_log_name = f"{stage}/{self.negative_sample_strategy}/ap"
                 auc_log_name = f"{stage}/{self.negative_sample_strategy}/auc"
             else:
+                progress_bar = False
                 ap_log_name = f"{stage}/{self.negative_sample_strategy}/ap_final"
                 auc_log_name = f"{stage}/{self.negative_sample_strategy}/auc_final"
 
@@ -332,14 +327,14 @@ class LinkPredictor(L.LightningModule):
             average_precision_score(y_true=labels.cpu().numpy(), y_score=scores.cpu().numpy()),
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
+            prog_bar=progress_bar,
         )
         self.log(
             auc_log_name,
             roc_auc_score(y_true=labels.cpu().numpy(), y_score=scores.cpu().numpy()),
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
+            prog_bar=progress_bar,
         )
 
         if perf_list is not None:
@@ -348,7 +343,7 @@ class LinkPredictor(L.LightningModule):
                 np.mean(perf_list),
                 on_step=False,
                 on_epoch=True,
-                prog_bar=True,
+                prog_bar=progress_bar,
             )
 
         # finer grained aggregation (aggregate to 4 bins) at trainer.validation() or trainer.test() stages
@@ -384,7 +379,7 @@ class LinkPredictor(L.LightningModule):
                     ),
                     on_step=False,
                     on_epoch=True,
-                    prog_bar=True,
+                    prog_bar=progress_bar,
                 )
                 self.log(
                     auc_log_name + f"_quarter_{i+1}",
@@ -394,7 +389,7 @@ class LinkPredictor(L.LightningModule):
                     ),
                     on_step=False,
                     on_epoch=True,
-                    prog_bar=True,
+                    prog_bar=progress_bar,
                 )
 
             if perf_list is not None:
@@ -411,7 +406,7 @@ class LinkPredictor(L.LightningModule):
                         np.mean(perf_list_per_quarter),
                         on_step=False,
                         on_epoch=True,
-                        prog_bar=True,
+                        prog_bar=progress_bar,
                     )
 
     def configure_optimizers(self) -> Dict[str, Any]:
