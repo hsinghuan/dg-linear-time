@@ -1,7 +1,7 @@
 # Copied from https://github.com/yule-BUAA/DyGLib/blob/master/models/MemoryModel.py
 from collections import defaultdict
 
-import jax.np as jnp
+# import jax.np as jnp
 import numpy as np
 import torch
 import torch.nn as nn

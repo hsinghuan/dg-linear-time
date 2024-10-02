@@ -105,7 +105,7 @@ class TGNModule(LinkPredictor):
 
         loss = self.loss_func(input=predicts, target=labels)
 
-        self.log("train/loss", loss, on_step=True, on_epoch=False, prog_bar=True)
+        self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
 
         # detach the memories and raw messages of nodes in the memory bank after each batch, so we don't back propagate to the start of time
         self.model[0].memory_bank.detach_memory_bank()
@@ -124,15 +124,15 @@ class TGNModule(LinkPredictor):
         """Set the neighbor sampler for validation."""
         self.model[0].set_neighbor_sampler(self.full_neighbor_sampler)
 
-    def on_validation_epoch_end(self) -> None:
-        """Aggregate validation performance and backup the memory bank after each validation
-        epoch."""
-        super().on_validation_epoch_end()
-        # if validation is done during trainer.fit(), we need to reload the train backup memory bank after validation for saving
-        # because the memory bank is updated (contaminated) during validation
-        if self.fit:
-            # self.model[0].memory_bank.reload_memory_bank(self.train_backup_memory_bank)
-            self.reload_train_memory_bank()
+    # def on_validation_epoch_end(self) -> None:
+    #     """Aggregate validation performance and backup the memory bank after each validation
+    #     epoch."""
+    #     super().on_validation_epoch_end()
+    #     # if validation is done during trainer.fit(), we need to reload the train backup memory bank after validation for saving
+    #     # because the memory bank is updated (contaminated) during validation
+    #     if self.fit:
+    #         # self.model[0].memory_bank.reload_memory_bank(self.train_backup_memory_bank)
+    #         self.reload_train_memory_bank()
 
     def on_validation_end(self) -> None:
         """If called during trainer.validate(), set the flag to indicate that validation is done.
@@ -142,6 +142,11 @@ class TGNModule(LinkPredictor):
         # validation is done at either trainer.fit() or trainer.validate()
         if not self.fit:
             self.is_validation_done = True
+        else:
+            # if validation is done during trainer.fit(), we need to reload the train backup memory bank after validation for saving
+            # because the memory bank is updated (contaminated) during validation
+            # self.model[0].memory_bank.reload_memory_bank(self.train_backup_memory_bank)
+            self.reload_train_memory_bank()
 
     def on_test_epoch_start(self) -> None:
         """Set the neighbor sampler for testing."""
