@@ -3,7 +3,7 @@ _target_: src.models.dygformer.DyGFormerModule
 
 time_feat_dim: 100
 channel_embedding_dim: 50
-output_dim: 172
+# output_dim: 172
 patch_size: 1
 num_layers: 2
 num_heads: 2

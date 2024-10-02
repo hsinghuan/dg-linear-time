@@ -36,3 +36,4 @@ data:
 model:
   optimizer:
     lr: 0.001
+  output_dim: 172

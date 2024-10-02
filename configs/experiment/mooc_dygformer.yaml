@@ -2,14 +2,14 @@
 
 defaults:
   - override /data: mooc
-  - override /model: tgn
+  - override /model: dygformer
   - override /callbacks: default
   - override /trainer: gpu
 
 logger:
   wandb:
     tags: ${tags}
-    group: mooc-tgn
+    group: mooc-dygformer
 
 tags: ["dev"]
 
@@ -31,4 +31,6 @@ trainer:
   num_sanity_val_steps: 0
 
 model:
-  dropout: 0.2
+  max_input_sequence_length: 256
+  patch_size: 8
+  dropout: 0.1

@@ -1,15 +1,15 @@
 # @package _global_
 
 defaults:
-  - override /data: mooc
-  - override /model: tgn
+  - override /data: wikipedia
+  - override /model: dygformer
   - override /callbacks: default
   - override /trainer: gpu
 
 logger:
   wandb:
     tags: ${tags}
-    group: mooc-tgn
+    group: wikipedia-dygformer
 
 tags: ["dev"]
 
@@ -29,6 +29,3 @@ trainer:
   max_epochs: 100
   devices: [1]
   num_sanity_val_steps: 0
-
-model:
-  dropout: 0.2
