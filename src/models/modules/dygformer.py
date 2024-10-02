@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from torch.nn import MultiheadAttention
 
 from src.models.modules.time import TimeEncoder
+from src.utils.analysis import analyze_history_length
 from src.utils.data import NeighborSampler
 
 
@@ -49,7 +50,7 @@ class DyGFormer(nn.Module):
         self.edge_feat_dim = self.edge_raw_features.shape[1]
         self.time_feat_dim = time_feat_dim
         self.channel_embedding_dim = channel_embedding_dim
-        self.output_dim = output_dim
+        self.output_dim = output_dim if output_dim is not None else self.node_feat_dim
         self.patch_size = patch_size
         self.num_layers = num_layers
         self.num_heads = num_heads
@@ -110,7 +111,11 @@ class DyGFormer(nn.Module):
         )
 
     def compute_src_dst_node_temporal_embeddings(
-        self, src_node_ids: np.ndarray, dst_node_ids: np.ndarray, node_interact_times: np.ndarray
+        self,
+        src_node_ids: np.ndarray,
+        dst_node_ids: np.ndarray,
+        node_interact_times: np.ndarray,
+        analyze_length: bool = False,
     ):
         """Compute source and destination node temporal embeddings :param src_node_ids: ndarray,
         shape (batch_size, ) :param dst_node_ids: ndarray, shape (batch_size, ) :param
@@ -133,6 +138,41 @@ class DyGFormer(nn.Module):
         ) = self.neighbor_sampler.get_all_first_hop_neighbors(
             node_ids=dst_node_ids, node_interact_times=node_interact_times
         )
+
+        # TODO: implement length (time & token) analysis
+        if analyze_length:
+            (
+                src_avg_time_diffs,
+                src_median_time_diffs,
+                src_max_time_diffs,
+                src_num_temporal_neighbors,
+            ) = analyze_history_length(
+                src_nodes_neighbor_times_list,
+                node_interact_times,
+                num_neighbors=self.max_input_sequence_length - 1,
+            )
+            (
+                dst_avg_time_diffs,
+                dst_median_time_diffs,
+                dst_max_time_diffs,
+                dst_num_temporal_neighbors,
+            ) = analyze_history_length(
+                dst_nodes_neighbor_times_list,
+                node_interact_times,
+                num_neighbors=self.max_input_sequence_length - 1,
+            )
+            src_history_length_analysis = {
+                "avg_time_diffs": src_avg_time_diffs,
+                "median_time_diffs": src_median_time_diffs,
+                "max_time_diffs": src_max_time_diffs,
+                "num_temporal_neighbors": src_num_temporal_neighbors,
+            }
+            dst_history_length_analysis = {
+                "avg_time_diffs": dst_avg_time_diffs,
+                "median_time_diffs": dst_median_time_diffs,
+                "max_time_diffs": dst_max_time_diffs,
+                "num_temporal_neighbors": dst_num_temporal_neighbors,
+            }
 
         # pad the sequences of first-hop neighbors for source and destination nodes
         # src_padded_nodes_neighbor_ids, ndarray, shape (batch_size, src_max_seq_length)
@@ -329,7 +369,16 @@ class DyGFormer(nn.Module):
         src_node_embeddings = self.output_layer(src_patches_data)
         # Tensor, shape (batch_size, output_dim)
         dst_node_embeddings = self.output_layer(dst_patches_data)
-        return src_node_embeddings, dst_node_embeddings
+
+        if analyze_length:
+            return (
+                src_node_embeddings,
+                dst_node_embeddings,
+                src_history_length_analysis,
+                dst_history_length_analysis,
+            )
+        else:
+            return src_node_embeddings, dst_node_embeddings
 
     def pad_sequences(
         self,
@@ -524,6 +573,40 @@ class DyGFormer(nn.Module):
         if self.neighbor_sampler.sample_neighbor_strategy in ["uniform", "time_interval_aware"]:
             assert self.neighbor_sampler.seed is not None
             self.neighbor_sampler.reset_random_state()
+
+    # def _analyze_length(self, padded_nodes_neighbor_ids: np.ndarray, padded_nodes_neighbor_times: np.ndarray, node_interact_times: np.ndarray):
+    #     """Analyze the average, median, and maximum time differences between the node_interact_times of the current batch of nodes and past historical interactions in padded_nodes_neighbor_times.
+    #     Also measures the number of temporal neighbors for each node in the current batch.
+    #     :param padded_nodes_neighbor_ids: ndarray, shape (batch_size, max_seq_length)
+    #     :param padded_nodes_neighbor_times: ndarray, shape (batch_size, max_seq_length)
+    #     :param node_interact_times: ndarray, shape (batch_size, )
+    #     :return: dict, analysis results
+    #     """
+    #     # three lists to store the average, median, and maximum time differences between the node_interact_times of the current batch of nodes and past historical interactions in padded_nodes_neighbor_times
+    #     avg_time_diffs, median_time_diffs, max_time_diffs = [], [], []
+    #     # list to store the number of temporal neighbors for each node in the current batch
+    #     num_temporal_neighbors = []
+    #     for idx in range(len(node_interact_times)):
+    #         # get the indices of the valid padded_nodes_neighbor_times
+    #         valid_indices = np.where(padded_nodes_neighbor_ids[idx] > 0)[0]
+    #         # get the valid padded_nodes_neighbor_times
+    #         valid_padded_nodes_neighbor_times = padded_nodes_neighbor_times[idx][valid_indices]
+    #         # get the valid padded_nodes_neighbor_ids
+    #         valid_padded_nodes_neighbor_ids = padded_nodes_neighbor_ids[idx][valid_indices]
+    #         # get the valid time differences between the node_interact_times of the current batch of nodes and past historical interactions
+    #         time_diffs = node_interact_times[idx] - valid_padded_nodes_neighbor_times
+    #         # get the average, median, and maximum time differences
+    #         avg_time_diffs.append(np.mean(time_diffs))
+    #         median_time_diffs.append(np.median(time_diffs))
+    #         max_time_diffs.append(np.max(time_diffs))
+    #         # get the number of temporal neighbors
+    #         num_temporal_neighbors.append(len(valid_padded_nodes_neighbor_ids))
+    #     return {
+    #         "avg_time_diffs": avg_time_diffs,
+    #         "median_time_diffs": median_time_diffs,
+    #         "max_time_diffs": max_time_diffs,
+    #         "num_temporal_neighbors": num_temporal_neighbors,
+    #     }
 
 
 class NeighborCooccurrenceEncoder(nn.Module):
