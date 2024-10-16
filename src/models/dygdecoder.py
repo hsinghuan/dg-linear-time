@@ -10,13 +10,13 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 from tgb.linkproppred.evaluate import Evaluator
 
 from src.models.linkpredictor import LinkPredictor
-from src.models.modules.dygformer import DyGFormer
+from src.models.modules.dygdecoder import DyGDecoder
 from src.models.modules.mlp import MergeLayer
 from src.utils.data import Data, NegativeEdgeSampler, get_neighbor_sampler
 
 
-class DyGFormerModule(LinkPredictor):
-    """LightningModule for DyGFormer."""
+class DyGDecoderModule(LinkPredictor):
+    """LightningModule for DyGDecoder."""
 
     def __init__(
         self,
@@ -30,9 +30,10 @@ class DyGFormerModule(LinkPredictor):
         dropout: float = 0.1,
         max_input_sequence_length: int = 512,
         sample_neighbor_strategy: str = "recent",
+        embed_method: str = "separate",
     ):
         super().__init__(sample_neighbor_strategy=sample_neighbor_strategy)
-        """Initialize DyGFormer LightningModule."""
+        """Initialize DyGDecoder LightningModule."""
         self.save_hyperparameters(logger=False)
         self.loss_func = nn.BCELoss()
         self.model = None  # delay model instantiation until setup()
@@ -138,7 +139,7 @@ class DyGFormerModule(LinkPredictor):
             if self.hparams.output_dim is not None
             else self.node_raw_features.shape[1]
         )
-        backbone = DyGFormer(
+        backbone = DyGDecoder(
             node_raw_features=self.node_raw_features,
             edge_raw_features=self.edge_raw_features,
             neighbor_sampler=self.train_neighbor_sampler,
@@ -150,6 +151,7 @@ class DyGFormerModule(LinkPredictor):
             num_heads=self.hparams.num_heads,
             dropout=self.hparams.dropout,
             max_input_sequence_length=self.hparams.max_input_sequence_length,
+            embed_method=self.hparams.embed_method,
             device=self.device,
         )
         link_predictor = MergeLayer(
@@ -178,12 +180,6 @@ class DyGFormerModule(LinkPredictor):
         )
         batch_neg_src_node_ids = batch_src_node_ids
 
-        # pos_scores = self._pred_scores(
-        #     batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times
-        # )
-        # neg_scores = self._pred_scores(
-        #     batch_neg_src_node_ids, batch_neg_dst_node_ids, batch_node_interact_times
-        # )
         train_kwargs = {"analyze_length": self.current_epoch == 0}
         pred_out = self._pred_pos_neg_scores(
             pos_src=batch_src_node_ids,
@@ -913,16 +909,3 @@ class DyGFormerModule(LinkPredictor):
                     length_analysis,
                     f"{checkpoint_dir}/{stage}_{self.negative_sample_strategy}_length_analysis.pt",
                 )
-
-    # def predict_step(self, batch):
-    #     """One batch of prediction."""
-    #     test_data_indices = batch.cpu().numpy()
-    #     batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times = (
-    #         self.test_data.src_node_ids[test_data_indices],
-    #         self.test_data.dst_node_ids[test_data_indices],
-    #         self.test_data.node_interact_times[test_data_indices],
-    #     )
-    #     scores = self._pred_scores(
-    #         src=batch_src_node_ids, dst=batch_dst_node_ids, t=batch_node_interact_times
-    #     )
-    #     return scores

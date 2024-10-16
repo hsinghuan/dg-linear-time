@@ -20,7 +20,7 @@ class DyGFormer(nn.Module):
         neighbor_sampler: NeighborSampler,
         time_feat_dim: int,
         channel_embedding_dim: int,
-        output_dim: int = 172,
+        output_dim: int,
         patch_size: int = 1,
         num_layers: int = 2,
         num_heads: int = 2,
@@ -50,7 +50,7 @@ class DyGFormer(nn.Module):
         self.edge_feat_dim = self.edge_raw_features.shape[1]
         self.time_feat_dim = time_feat_dim
         self.channel_embedding_dim = channel_embedding_dim
-        self.output_dim = output_dim if output_dim is not None else self.node_feat_dim
+        self.output_dim = output_dim
         self.patch_size = patch_size
         self.num_layers = num_layers
         self.num_heads = num_heads
@@ -139,7 +139,6 @@ class DyGFormer(nn.Module):
             node_ids=dst_node_ids, node_interact_times=node_interact_times
         )
 
-        # TODO: implement length (time & token) analysis
         if analyze_length:
             (
                 src_avg_time_diffs,
@@ -463,9 +462,9 @@ class DyGFormer(nn.Module):
         padded_nodes_neighbor_times: np.ndarray,
         time_encoder: TimeEncoder,
     ):
-        """Get node, edge and time features :param node_interact_times: ndarray, shape (batch_size,
-        ) :param padded_nodes_neighbor_ids: ndarray, shape (batch_size, max_seq_length) :param
-        padded_nodes_edge_ids: ndarray, shape (batch_size, max_seq_length) :param
+        """Get node, edge and time features :param node_interact_times: ndarray, shape
+        (batch_size,) :param padded_nodes_neighbor_ids: ndarray, shape (batch_size, max_seq_length)
+        :param padded_nodes_edge_ids: ndarray, shape (batch_size, max_seq_length) :param
         padded_nodes_neighbor_times: ndarray, shape (batch_size, max_seq_length) :param
         time_encoder: TimeEncoder, time encoder :return:"""
         # Tensor, shape (batch_size, max_seq_length, node_feat_dim)
@@ -484,10 +483,10 @@ class DyGFormer(nn.Module):
             .float()
             .to(self.device)
         )
-
         # ndarray, set the time features to all zeros for the padded timestamp
         padded_nodes_neighbor_time_features[torch.from_numpy(padded_nodes_neighbor_ids == 0)] = 0.0
 
+        # print("padded nodes neighbor time features shape", padded_nodes_neighbor_time_features.shape)
         return (
             padded_nodes_neighbor_node_raw_features,
             padded_nodes_edge_raw_features,

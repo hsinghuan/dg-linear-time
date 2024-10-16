@@ -32,8 +32,35 @@ class TimeEncoder(nn.Module):
         (batch_size, seq_len) :return:"""
         # Tensor, shape (batch_size, seq_len, 1)
         timestamps = timestamps.unsqueeze(dim=2)
-
+        # print("timestamps shape", timestamps.shape)
         # Tensor, shape (batch_size, seq_len, time_dim)
         output = torch.cos(self.w(timestamps))
+        # print("output shape", output.shape)
+        return output
 
+
+class TanhTimeEncoder(nn.Module):
+    """Tanh Time encoder for encoding the elapsed time into a ``time_dim'' dimensional vector."""
+
+    def __init__(self, time_dim: int):
+        """
+        :param time_dim: int, dimension of time encodings
+        :param parameter_requires_grad: boolean, whether the parameter in TimeEncoder needs gradient
+        """
+        super().__init__()
+
+        self.time_dim = time_dim
+        # trainable parameters for time encoding
+        self.w = nn.Linear(1, time_dim)
+        self.tanh = nn.Tanh()
+
+    def forward(self, timestamps: torch.Tensor):
+        """Compute time encodings of time in timestamps :param timestamps: Tensor, shape
+        (batch_size, seq_len) :return:"""
+        # Tensor, shape (batch_size, seq_len, 1)
+        timestamps = timestamps.unsqueeze(dim=2)
+        # print("timestamps shape", timestamps.shape)
+        # Tensor, shape (batch_size, seq_len, time_dim)
+        output = self.tanh(self.w(timestamps))
+        # print("output shape", output.shape)
         return output
