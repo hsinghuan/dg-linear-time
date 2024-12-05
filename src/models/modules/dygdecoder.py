@@ -7,8 +7,8 @@ import torch.nn.functional as F
 from torch.nn import MultiheadAttention
 
 from src.models.modules.dygformer import NeighborCooccurrenceEncoder
-from src.models.modules.time import TanhTimeEncoder, TimeEncoder
-from src.utils.analysis import analyze_history_length
+from src.models.modules.time import ExpTimeEncoder, NoTimeEncoder, TimeEncoder
+from src.utils.analysis import analyze_history_length, analyze_inter_event_time
 from src.utils.data import NeighborSampler
 
 
@@ -28,7 +28,10 @@ class DyGDecoder(nn.Module):
         num_heads: int = 2,
         dropout: float = 0.1,
         max_input_sequence_length: int = 512,
-        # encode_src_dst_separately: bool = True,
+        time_encoding_method: str = "sinusoidal",
+        avg_inter_event_time: float = None,
+        median_inter_event_time: float = None,
+        std_inter_event_time: float = None,
         embed_method: str = "separate",
         device: str = "cpu",
     ):
@@ -64,8 +67,17 @@ class DyGDecoder(nn.Module):
         self.embed_method = embed_method
         self.device = device
 
-        self.time_encoder = TimeEncoder(time_dim=time_feat_dim)
-        # self.time_encoder = TanhTimeEncoder(time_dim=time_feat_dim)
+        if time_encoding_method == "sinusoidal":
+            self.time_encoder = TimeEncoder(time_dim=time_feat_dim)
+        elif time_encoding_method == "exponential":
+            self.time_encoder = ExpTimeEncoder(
+                time_dim=time_feat_dim,
+                median_inter_event_time=median_inter_event_time,
+                parameter_requires_grad=False,
+            )
+        elif time_encoding_method == "linear":
+            print("mean: ", avg_inter_event_time, "std: ", std_inter_event_time)
+            self.time_encoder = NoTimeEncoder(mean=avg_inter_event_time, std=std_inter_event_time)
 
         self.neighbor_co_occurrence_feat_dim = self.channel_embedding_dim
         self.neighbor_co_occurrence_encoder = NeighborCooccurrenceEncoder(
@@ -100,10 +112,10 @@ class DyGDecoder(nn.Module):
 
         self.num_channels = 4
 
-        if embed_method == "causal_cross":
+        if embed_method == "self_cross":
             self.transformers = nn.ModuleList(
                 [
-                    CausalCrossFormer(
+                    SelfCrossFormer(
                         attention_dim=self.num_channels * self.channel_embedding_dim,
                         num_heads=self.num_heads,
                         dropout=self.dropout,
@@ -365,10 +377,23 @@ class DyGDecoder(nn.Module):
             dst_patches_data = dst_patches_data.reshape(
                 batch_size, dst_num_patches, self.num_channels * self.channel_embedding_dim
             )
+            # print(f"src_patches_data before transformers has nan? {torch.isnan(src_patches_data).any()}")
+            # print(f"dst_patches_data before transformers has nan? {torch.isnan(dst_patches_data).any()}")
+            # if torch.isnan(src_patches_data).any():
+            #     print(src_patches_data)
+            # if torch.isnan(dst_patches_data).any():
+            #     print(dst_patches_data)
 
             for transformer in self.transformers:
                 src_patches_data = transformer(src_patches_data)
                 dst_patches_data = transformer(dst_patches_data)
+
+            # print(f"src_patches_data after transformers has nan? {torch.isnan(src_patches_data).any()}")
+            # print(f"dst_patches_data after transformers has nan? {torch.isnan(dst_patches_data).any()}")
+            # if torch.isnan(src_patches_data).any():
+            #     print(src_patches_data)
+            # if torch.isnan(dst_patches_data).any():
+            #     print(dst_patches_data)
 
             # find the patch containing the last non-padding token of src_patches_data and dst_patches_data
             def last_non_zero(arr1d):
@@ -496,8 +521,8 @@ class DyGDecoder(nn.Module):
             # Tensor, shape (batch_size, output_dim)
             dst_node_embeddings = self.output_layer(dst_patches_data)
 
-        # VERSION 3: Use Causal Cross Attention
-        elif self.embed_method == "causal_cross":
+        # VERSION 3: Use Self Cross Attention
+        elif self.embed_method == "self_cross":
             # get the features of the sequence of source and destination nodes
             # src_padded_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, src_max_seq_length, node_feat_dim)
             # src_padded_nodes_edge_raw_features, Tensor, shape (batch_size, src_max_seq_length, edge_feat_dim)
@@ -635,6 +660,12 @@ class DyGDecoder(nn.Module):
             dst_patches_data = dst_patches_data.reshape(
                 batch_size, dst_num_patches, self.num_channels * self.channel_embedding_dim
             )
+            # print(f"src_patches_data has nan? {torch.isnan(src_patches_data).any()}")
+            # print(f"dst_patches_data has nan? {torch.isnan(dst_patches_data).any()}")
+            # if torch.isnan(src_patches_data).any():
+            #     print(src_patches_data)
+            # if torch.isnan(dst_patches_data).any():
+            #     print(dst_patches_data)
 
             # compute source node embeddings by using src_patches_data as the self_seq and dst_patches_data as the cross_seq
             src_hidden_states = src_patches_data
@@ -694,6 +725,13 @@ class DyGDecoder(nn.Module):
             # print("dst_padded_nodes_neighbor_ids", dst_padded_nodes_neighbor_ids)
             # print("dst_last_nonpadding_indices", dst_last_nonpadding_indices)
             # print("dst_last_nonpadding_patch_indices", dst_last_nonpadding_patch_indices)
+
+        # print(f"src node embedding has nan? {torch.isnan(src_node_embeddings).any()}")
+        # print(f"dst node embedding has nan? {torch.isnan(dst_node_embeddings).any()}")
+        # if torch.isnan(src_node_embeddings).any():
+        #     print(src_node_embeddings)
+        # if torch.isnan(dst_node_embeddings).any():
+        #     print(dst_node_embeddings)
 
         if analyze_length:
             return (
@@ -769,7 +807,7 @@ class DyGDecoder(nn.Module):
         for idx in range(len(node_ids)):
             num_neighbors = len(nodes_neighbor_ids_list[idx])
             padded_nodes_neighbor_ids[idx, num_neighbors] = node_ids[idx]
-            padded_nodes_edge_ids[idx, num_neighbors] = 0  # why zero?
+            padded_nodes_edge_ids[idx, num_neighbors] = 0
             padded_nodes_neighbor_times[idx, num_neighbors] = node_interact_times[idx]
 
             if num_neighbors > 0:
@@ -810,16 +848,20 @@ class DyGDecoder(nn.Module):
             padded_nodes_neighbor_times[:, 1:] - padded_nodes_neighbor_times[:, :-1]
         )
         padded_nodes_neighbor_time_features[padded_nodes_neighbor_time_features < 0] = 0
-        # print("padded_nodes_neighbor_time_features", padded_nodes_neighbor_time_features)
+        # print("(before) padded_nodes_neighbor_time_features", padded_nodes_neighbor_time_features)
         padded_nodes_neighbor_time_features = time_encoder(
             timestamps=padded_nodes_neighbor_time_features
         )
+
         # padded_nodes_neighbor_time_features[torch.from_numpy(padded_nodes_neighbor_ids == 0)] = 0.0
         mask = torch.from_numpy(padded_nodes_neighbor_ids != 0).to(self.device)
         padded_nodes_neighbor_time_features = padded_nodes_neighbor_time_features * (
             mask.unsqueeze(-1)
         )
-
+        # print("(after) padded_nodes_neighbor_time_features", padded_nodes_neighbor_time_features)
+        # print(f"padded_nodes_neighbor_time_features has inf? {torch.isinf(padded_nodes_neighbor_time_features).any()}")
+        # if torch.isinf(padded_nodes_neighbor_time_features).any():
+        #     print(padded_nodes_neighbor_time_features)
         return (
             padded_nodes_neighbor_node_raw_features,
             padded_nodes_edge_raw_features,
@@ -900,7 +942,7 @@ class DyGDecoder(nn.Module):
             patches_nodes_neighbor_times = (
                 torch.stack(patches_nodes_neighbor_times, dim=1)
                 .reshape(batch_size, num_patches, patch_size)
-                .max(dim=-1)[0]
+                .max(dim=-1)[0]  # TODO: try .mean()
             )
 
             return (
@@ -1074,22 +1116,32 @@ class TransformerDecoder(nn.Module):
         # Tensor, shape (num_patches, batch_size, self.attention_dim)
         transposed_inputs = inputs.transpose(0, 1)
         # Tensor, shape (num_patches, batch_size, self.attention_dim)
-        transposed_inputs = self.norm_layers[0](transposed_inputs)
+        # print(f"transposed_inputs has nan? {torch.isnan(transposed_inputs).any()}")
+        # print(transposed_inputs)
+        transposed_inputs_post_norm = self.norm_layers[0](transposed_inputs)
+        # print(f"transposed_inputs after norm has nan? {torch.isnan(transposed_inputs_post_norm).any()}")
+        # if torch.isnan(transposed_inputs_post_norm).any():
+        #     print(f"before transpose: {transposed_inputs}")
+        #     print(f"after transpose: {transposed_inputs_post_norm}")
+        # print(transposed_inputs)
         # we create a mask to make the query token attend to only the previous tokens
         mask = torch.triu(
             torch.full(
-                (transposed_inputs.size(0), transposed_inputs.size(0)),
+                (transposed_inputs_post_norm.size(0), transposed_inputs_post_norm.size(0)),
                 float("-inf"),
                 dtype=torch.float32,
-                device=transposed_inputs.device,
+                device=transposed_inputs_post_norm.device,
             ),
             diagonal=1,
         )
         # Tensor, shape (batch_size, num_patches, self.attention_dim)
         hidden_states = self.multi_head_attention(
-            query=transposed_inputs, key=transposed_inputs, value=transposed_inputs, attn_mask=mask
+            query=transposed_inputs_post_norm,
+            key=transposed_inputs_post_norm,
+            value=transposed_inputs_post_norm,
+            attn_mask=mask,
         )[0].transpose(0, 1)
-
+        # print(f"hidden_states has nan? {torch.isnan(hidden_states).any()}")
         # hidden_states, attn_weights = self.multi_head_attention(
         #     query=transposed_inputs, key=transposed_inputs, value=transposed_inputs, attn_mask=mask
         # )
@@ -1106,11 +1158,11 @@ class TransformerDecoder(nn.Module):
         return outputs
 
 
-class CausalCrossAttention(nn.Module):
-    """Causal Cross Attention module."""
+class SelfCrossAttention(nn.Module):
+    """Self Cross Attention module."""
 
     def __init__(self, d, H, T, dropout: float = 0.1):
-        """Initialize the CausalCrossAttention module.
+        """Initialize the SelfCrossAttention module.
 
         :param d: int, size of feature dimension
         :param H: int, number of attention heads
@@ -1212,13 +1264,13 @@ class CausalCrossAttention(nn.Module):
         return y[:, :T_self], y[:, T_self:]  # split to self and cross parts then return
 
 
-class CausalCrossFormer(nn.Module):
-    """CrossCausalFormer model."""
+class SelfCrossFormer(nn.Module):
+    """SelfCrossFormer model."""
 
     def __init__(self, attention_dim: int, num_heads: int, dropout: float = 0.1):
         super().__init__()
 
-        self.causal_cross_attn = CausalCrossAttention(attention_dim, num_heads, dropout)
+        self.self_cross_attn = SelfCrossAttention(attention_dim, num_heads, dropout)
 
         self.dropout = nn.Dropout(dropout)
 
@@ -1239,7 +1291,7 @@ class CausalCrossFormer(nn.Module):
         self_seq_time: torch.Tensor,
         cross_seq_time: torch.Tensor,
     ):
-        """Process two sequences by CrossCausalFormer :param self_seq: Tensor, shape (batch_size,
+        """Process two sequences by SelfCrossFormer :param self_seq: Tensor, shape (batch_size,
         num_self_patches, self.attention_dim) :param cross_seq: Tensor, shape (batch_size,
         num_cross_patches, self.attention_dim) :param self_seq_time: Tensor, shape (batch_size,
         num_self_patches) :param cross_seq_time: Tensor, shape (batch_size, num_cross_patches)
@@ -1253,7 +1305,7 @@ class CausalCrossFormer(nn.Module):
 
         # Tensor, shape (batch_size, num_self_patches, self.attention_dim)
         # Tensor, shape (batch_size, num_cross_patches, self.attention_dim)
-        self_hidden_states, cross_hidden_states = self.causal_cross_attn(
+        self_hidden_states, cross_hidden_states = self.self_cross_attn(
             self_seq=normalized_inputs[:, :self_seq_len],
             cross_seq=normalized_inputs[:, self_seq_len:],
             self_seq_time=self_seq_time,

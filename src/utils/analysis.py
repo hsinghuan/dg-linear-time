@@ -37,3 +37,41 @@ def analyze_history_length(
     max_time_diffs = np.nanmax(time_diffs, axis=1)
 
     return avg_time_diffs, median_time_diffs, max_time_diffs, num_temporal_neighbors
+
+
+def analyze_inter_event_time(
+    neighbor_times_list: list,
+    node_interact_times: np.ndarray,
+):
+    """Compute the average inter-event time between two consecutive interactions for a target
+    node's history and then average across nodes."""
+    # avg_inter_event_time = 0
+    # median_inter_event_time = 0
+    # total_num = 0
+    avg_inter_event_time_list = []
+    median_inter_event_time_list = []
+    for i, neighbor_times in enumerate(neighbor_times_list):
+        neighbor_times = np.append(neighbor_times, node_interact_times[i])
+        # calculate the inter-event time (difference between adjacent elements)
+        inter_event_times = np.diff(neighbor_times)
+        # assert inter event times are non-negative
+        assert np.all(inter_event_times >= 0)
+        node_i_avg_inter_event_time = np.mean(inter_event_times)
+        node_i_median_inter_event_time = np.median(inter_event_times)
+        if not np.isnan(
+            node_i_avg_inter_event_time
+        ):  # will be nan if there were no temporal neighbors (historical interactions)
+            # avg_inter_event_time += node_i_avg_inter_event_time
+            avg_inter_event_time_list.append(node_i_avg_inter_event_time)
+            # median_inter_event_time += node_i_median_inter_event_time
+            # total_num += 1
+        if not np.isnan(node_i_median_inter_event_time):
+            median_inter_event_time_list.append(node_i_median_inter_event_time)
+
+    # avg_inter_event_time /= total_num
+    avg_inter_event_time = np.mean(avg_inter_event_time_list)
+    std_inter_event_time = np.std(avg_inter_event_time_list)
+    # median_inter_event_time = np.median(median_inter_event_time_list)
+    median_inter_event_time = np.mean(median_inter_event_time_list)
+    # median_inter_event_time /= total_num
+    return avg_inter_event_time, median_inter_event_time, std_inter_event_time

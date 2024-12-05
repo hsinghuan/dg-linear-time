@@ -46,6 +46,10 @@ class LinkPredictor(L.LightningModule):
             time_scaling_factor=self.hparams.time_scaling_factor,
             seed=1,
         )
+        self.train_negative_sample_strategy = (
+            self.trainer.datamodule.train_negative_sample_strategy
+        )
+        self.eval_negative_sample_strategy = self.trainer.datamodule.eval_negative_sample_strategy
         self.train_neg_edge_sampler = NegativeEdgeSampler(
             src_node_ids=self.train_data.src_node_ids, dst_node_ids=self.train_data.dst_node_ids
         )
@@ -72,14 +76,13 @@ class LinkPredictor(L.LightningModule):
             self.val_perf_list = []
             self.test_perf_list = []
         else:
-            self.negative_sample_strategy = self.trainer.datamodule.negative_sample_strategy
-            if self.negative_sample_strategy != "random":
+            if self.eval_negative_sample_strategy != "random":
                 self.val_neg_edge_sampler = NegativeEdgeSampler(
                     src_node_ids=self.full_data.src_node_ids,
                     dst_node_ids=self.full_data.dst_node_ids,
                     interact_times=self.full_data.node_interact_times,
                     last_observed_time=self.train_data.node_interact_times[-1],
-                    negative_sample_strategy=self.negative_sample_strategy,
+                    negative_sample_strategy=self.eval_negative_sample_strategy,
                     seed=0,
                 )
                 self.test_neg_edge_sampler = NegativeEdgeSampler(
@@ -87,7 +90,7 @@ class LinkPredictor(L.LightningModule):
                     dst_node_ids=self.full_data.dst_node_ids,
                     interact_times=self.full_data.node_interact_times,
                     last_observed_time=self.val_data.node_interact_times[-1],
-                    negative_sample_strategy=self.negative_sample_strategy,
+                    negative_sample_strategy=self.eval_negative_sample_strategy,
                     seed=2,
                 )
             else:
@@ -190,7 +193,8 @@ class LinkPredictor(L.LightningModule):
         scores = torch.cat((pos_scores, neg_scores), dim=0)
         labels = torch.cat((torch.ones_like(pos_scores), torch.zeros_like(neg_scores)), dim=0)
         loss = self.loss_func(input=scores, target=labels)
-        self.log(f"{stage}/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        if self.fit:
+            self.log(f"{stage}/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
 
         if stage == "val":
             self.val_pos_scores.append(pos_scores)
@@ -282,7 +286,6 @@ class LinkPredictor(L.LightningModule):
 
         if self.dataset_type == "tgbl":
             if self.fit:
-                progress_bar = True
                 if self.fast_eval:
                     ap_log_name = f"{stage}/ap_fast"
                     auc_log_name = f"{stage}/auc_fast"
@@ -292,19 +295,24 @@ class LinkPredictor(L.LightningModule):
                     auc_log_name = f"{stage}/auc"
                     metric_log_name = f"{stage}/{self.metric}"
             else:
-                progress_bar = False
                 ap_log_name = f"{stage}/ap_final"
                 auc_log_name = f"{stage}/auc_final"
                 metric_log_name = f"{stage}/{self.metric}_final"
         else:
             if self.fit:
-                progress_bar = True
-                ap_log_name = f"{stage}/{self.negative_sample_strategy}/ap"
-                auc_log_name = f"{stage}/{self.negative_sample_strategy}/auc"
+                if stage != "train":
+                    ap_log_name = f"{stage}/{self.eval_negative_sample_strategy}/ap"
+                    auc_log_name = f"{stage}/{self.eval_negative_sample_strategy}/auc"
+                else:
+                    ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap"
+                    auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc"
             else:
-                progress_bar = False
-                ap_log_name = f"{stage}/{self.negative_sample_strategy}/ap_final"
-                auc_log_name = f"{stage}/{self.negative_sample_strategy}/auc_final"
+                if stage != "train":
+                    ap_log_name = f"{stage}/{self.eval_negative_sample_strategy}/ap_final"
+                    auc_log_name = f"{stage}/{self.eval_negative_sample_strategy}/auc_final"
+                else:
+                    ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap_final"
+                    auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc_final"
 
         # if self.fit:
         #     if self.fast_eval:
@@ -327,14 +335,12 @@ class LinkPredictor(L.LightningModule):
             average_precision_score(y_true=labels.cpu().numpy(), y_score=scores.cpu().numpy()),
             on_step=False,
             on_epoch=True,
-            prog_bar=progress_bar,
         )
         self.log(
             auc_log_name,
             roc_auc_score(y_true=labels.cpu().numpy(), y_score=scores.cpu().numpy()),
             on_step=False,
             on_epoch=True,
-            prog_bar=progress_bar,
         )
 
         if perf_list is not None:
@@ -343,71 +349,70 @@ class LinkPredictor(L.LightningModule):
                 np.mean(perf_list),
                 on_step=False,
                 on_epoch=True,
-                prog_bar=progress_bar,
             )
 
-        # finer grained aggregation (aggregate to 4 bins) at trainer.validation() or trainer.test() stages
-        if not self.fit:
-            pos_scores_num = len(pos_scores)
-            neg_scores_num = len(neg_scores)
-            for i in range(4):
-                if i != 3:
-                    pos_scores_per_quarter = pos_scores[
-                        i * pos_scores_num // 4 : (i + 1) * pos_scores_num // 4
-                    ]
-                    neg_scores_per_quarter = neg_scores[
-                        i * neg_scores_num // 4 : (i + 1) * neg_scores_num // 4
-                    ]
-                else:
-                    pos_scores_per_quarter = pos_scores[i * pos_scores_num // 4 :]
-                    neg_scores_per_quarter = neg_scores[i * neg_scores_num // 4 :]
-                scores_per_quarter = torch.cat(
-                    (pos_scores_per_quarter, neg_scores_per_quarter), dim=0
-                )
-                labels_per_quarter = torch.cat(
-                    (
-                        torch.ones_like(pos_scores_per_quarter),
-                        torch.zeros_like(neg_scores_per_quarter),
-                    ),
-                    dim=0,
-                )
-                self.log(
-                    ap_log_name + f"_quarter_{i+1}",
-                    average_precision_score(
-                        y_true=labels_per_quarter.cpu().numpy(),
-                        y_score=scores_per_quarter.cpu().numpy(),
-                    ),
-                    on_step=False,
-                    on_epoch=True,
-                    prog_bar=progress_bar,
-                )
-                self.log(
-                    auc_log_name + f"_quarter_{i+1}",
-                    roc_auc_score(
-                        y_true=labels_per_quarter.cpu().numpy(),
-                        y_score=scores_per_quarter.cpu().numpy(),
-                    ),
-                    on_step=False,
-                    on_epoch=True,
-                    prog_bar=progress_bar,
-                )
+        # # finer grained aggregation (aggregate to 4 bins) at trainer.validation() or trainer.test() stages
+        # if not self.fit:
+        #     pos_scores_num = len(pos_scores)
+        #     neg_scores_num = len(neg_scores)
+        #     for i in range(4):
+        #         if i != 3:
+        #             pos_scores_per_quarter = pos_scores[
+        #                 i * pos_scores_num // 4 : (i + 1) * pos_scores_num // 4
+        #             ]
+        #             neg_scores_per_quarter = neg_scores[
+        #                 i * neg_scores_num // 4 : (i + 1) * neg_scores_num // 4
+        #             ]
+        #         else:
+        #             pos_scores_per_quarter = pos_scores[i * pos_scores_num // 4 :]
+        #             neg_scores_per_quarter = neg_scores[i * neg_scores_num // 4 :]
+        #         scores_per_quarter = torch.cat(
+        #             (pos_scores_per_quarter, neg_scores_per_quarter), dim=0
+        #         )
+        #         labels_per_quarter = torch.cat(
+        #             (
+        #                 torch.ones_like(pos_scores_per_quarter),
+        #                 torch.zeros_like(neg_scores_per_quarter),
+        #             ),
+        #             dim=0,
+        #         )
+        #         self.log(
+        #             ap_log_name + f"_quarter_{i+1}",
+        #             average_precision_score(
+        #                 y_true=labels_per_quarter.cpu().numpy(),
+        #                 y_score=scores_per_quarter.cpu().numpy(),
+        #             ),
+        #             on_step=False,
+        #             on_epoch=True,
+        #             prog_bar=progress_bar,
+        #         )
+        #         self.log(
+        #             auc_log_name + f"_quarter_{i+1}",
+        #             roc_auc_score(
+        #                 y_true=labels_per_quarter.cpu().numpy(),
+        #                 y_score=scores_per_quarter.cpu().numpy(),
+        #             ),
+        #             on_step=False,
+        #             on_epoch=True,
+        #             prog_bar=progress_bar,
+        #         )
 
-            if perf_list is not None:
-                perf_list_num = len(perf_list)
-                for i in range(4):
-                    if i != 3:
-                        perf_list_per_quarter = perf_list[
-                            i * perf_list_num // 4 : (i + 1) * perf_list_num // 4
-                        ]
-                    else:
-                        perf_list_per_quarter = perf_list[i * perf_list_num // 4 :]
-                    self.log(
-                        metric_log_name + f"_quarter_{i+1}",
-                        np.mean(perf_list_per_quarter),
-                        on_step=False,
-                        on_epoch=True,
-                        prog_bar=progress_bar,
-                    )
+        #     if perf_list is not None:
+        #         perf_list_num = len(perf_list)
+        #         for i in range(4):
+        #             if i != 3:
+        #                 perf_list_per_quarter = perf_list[
+        #                     i * perf_list_num // 4 : (i + 1) * perf_list_num // 4
+        #                 ]
+        #             else:
+        #                 perf_list_per_quarter = perf_list[i * perf_list_num // 4 :]
+        #             self.log(
+        #                 metric_log_name + f"_quarter_{i+1}",
+        #                 np.mean(perf_list_per_quarter),
+        #                 on_step=False,
+        #                 on_epoch=True,
+        #                 prog_bar=progress_bar,
+        #             )
 
     def configure_optimizers(self) -> Dict[str, Any]:
         """Configure and return optimizer and scheduler."""

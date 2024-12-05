@@ -26,6 +26,7 @@ class DyGFormer(nn.Module):
         num_heads: int = 2,
         dropout: float = 0.1,
         max_input_sequence_length: int = 512,
+        embed_method: str = "original",  # original dygformer merges the two sequences when forwarding through transformer
         device: str = "cpu",
     ):
         """
@@ -56,6 +57,7 @@ class DyGFormer(nn.Module):
         self.num_heads = num_heads
         self.dropout = dropout
         self.max_input_sequence_length = max_input_sequence_length
+        self.embed_method = embed_method
         self.device = device
 
         self.time_encoder = TimeEncoder(time_dim=time_feat_dim)
@@ -314,60 +316,113 @@ class DyGFormer(nn.Module):
         src_num_patches = src_patches_nodes_neighbor_node_raw_features.shape[1]
         dst_num_patches = dst_patches_nodes_neighbor_node_raw_features.shape[1]
 
-        # Tensor, shape (batch_size, src_num_patches + dst_num_patches, channel_embedding_dim)
-        patches_nodes_neighbor_node_raw_features = torch.cat(
-            [
+        if self.embed_method == "original":
+            # Tensor, shape (batch_size, src_num_patches + dst_num_patches, channel_embedding_dim)
+            patches_nodes_neighbor_node_raw_features = torch.cat(
+                [
+                    src_patches_nodes_neighbor_node_raw_features,
+                    dst_patches_nodes_neighbor_node_raw_features,
+                ],
+                dim=1,
+            )
+            patches_nodes_edge_raw_features = torch.cat(
+                [src_patches_nodes_edge_raw_features, dst_patches_nodes_edge_raw_features], dim=1
+            )
+            patches_nodes_neighbor_time_features = torch.cat(
+                [
+                    src_patches_nodes_neighbor_time_features,
+                    dst_patches_nodes_neighbor_time_features,
+                ],
+                dim=1,
+            )
+            patches_nodes_neighbor_co_occurrence_features = torch.cat(
+                [
+                    src_patches_nodes_neighbor_co_occurrence_features,
+                    dst_patches_nodes_neighbor_co_occurrence_features,
+                ],
+                dim=1,
+            )
+
+            patches_data = [
+                patches_nodes_neighbor_node_raw_features,
+                patches_nodes_edge_raw_features,
+                patches_nodes_neighbor_time_features,
+                patches_nodes_neighbor_co_occurrence_features,
+            ]
+            # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels, channel_embedding_dim)
+            patches_data = torch.stack(patches_data, dim=2)
+            # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels * channel_embedding_dim)
+            patches_data = patches_data.reshape(
+                batch_size,
+                src_num_patches + dst_num_patches,
+                self.num_channels * self.channel_embedding_dim,
+            )
+            # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels * channel_embedding_dim)
+            for transformer in self.transformers:
+                patches_data = transformer(patches_data)
+
+            # src_patches_data, Tensor, shape (batch_size, src_num_patches, num_channels * channel_embedding_dim)
+            src_patches_data = patches_data[:, :src_num_patches, :]
+            # dst_patches_data, Tensor, shape (batch_size, dst_num_patches, num_channels * channel_embedding_dim)
+            dst_patches_data = patches_data[
+                :, src_num_patches : src_num_patches + dst_num_patches, :
+            ]
+            # src_patches_data, Tensor, shape (batch_size, num_channels * channel_embedding_dim)
+            src_patches_data = torch.mean(src_patches_data, dim=1)
+            # dst_patches_data, Tensor, shape (batch_size, num_channels * channel_embedding_dim)
+            dst_patches_data = torch.mean(dst_patches_data, dim=1)
+
+            # Tensor, shape (batch_size, output_dim)
+            src_node_embeddings = self.output_layer(src_patches_data)
+            # Tensor, shape (batch_size, output_dim)
+            dst_node_embeddings = self.output_layer(dst_patches_data)
+
+        elif self.embed_method == "separate":
+            src_patches_data = [
                 src_patches_nodes_neighbor_node_raw_features,
-                dst_patches_nodes_neighbor_node_raw_features,
-            ],
-            dim=1,
-        )
-        patches_nodes_edge_raw_features = torch.cat(
-            [src_patches_nodes_edge_raw_features, dst_patches_nodes_edge_raw_features], dim=1
-        )
-        patches_nodes_neighbor_time_features = torch.cat(
-            [src_patches_nodes_neighbor_time_features, dst_patches_nodes_neighbor_time_features],
-            dim=1,
-        )
-        patches_nodes_neighbor_co_occurrence_features = torch.cat(
-            [
+                src_patches_nodes_edge_raw_features,
+                src_patches_nodes_neighbor_time_features,
                 src_patches_nodes_neighbor_co_occurrence_features,
+            ]
+            # Tensor, shape (batch_size, src_num_patches, num_channels, channel_embedding_dim)
+            src_patches_data = torch.stack(src_patches_data, dim=2)
+            # Tensor, shape (batch_size, src_num_patches, num_channels * channel_embedding_dim)
+            src_patches_data = src_patches_data.reshape(
+                batch_size,
+                src_num_patches,
+                self.num_channels * self.channel_embedding_dim,
+            )
+
+            dst_patches_data = [
+                dst_patches_nodes_neighbor_node_raw_features,
+                dst_patches_nodes_edge_raw_features,
+                dst_patches_nodes_neighbor_time_features,
                 dst_patches_nodes_neighbor_co_occurrence_features,
-            ],
-            dim=1,
-        )
+            ]
+            # Tensor, shape (batch_size, dst_num_patches, num_channels, channel_embedding_dim)
+            dst_patches_data = torch.stack(dst_patches_data, dim=2)
+            # Tensor, shape (batch_size, src_num_patches, num_channels * channel_embedding_dim)
+            dst_patches_data = dst_patches_data.reshape(
+                batch_size,
+                dst_num_patches,
+                self.num_channels * self.channel_embedding_dim,
+            )
+            # Tensor, shape (batch_size, src_num_patches, num_channels * channel_embedding_dim)
+            for transformer in self.transformers:
+                src_patches_data = transformer(src_patches_data)
+            # Tensor, shape (batch_size, dst_num_patches, num_channels * channel_embedding_dim)
+            for transformer in self.transformers:
+                dst_patches_data = transformer(dst_patches_data)
 
-        patches_data = [
-            patches_nodes_neighbor_node_raw_features,
-            patches_nodes_edge_raw_features,
-            patches_nodes_neighbor_time_features,
-            patches_nodes_neighbor_co_occurrence_features,
-        ]
-        # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels, channel_embedding_dim)
-        patches_data = torch.stack(patches_data, dim=2)
-        # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels * channel_embedding_dim)
-        patches_data = patches_data.reshape(
-            batch_size,
-            src_num_patches + dst_num_patches,
-            self.num_channels * self.channel_embedding_dim,
-        )
-        # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels * channel_embedding_dim)
-        for transformer in self.transformers:
-            patches_data = transformer(patches_data)
+            # src_patches_data, Tensor, shape (batch_size, num_channels * channel_embedding_dim)
+            src_patches_data = torch.mean(src_patches_data, dim=1)
+            # dst_patches_data, Tensor, shape (batch_size, num_channels * channel_embedding_dim)
+            dst_patches_data = torch.mean(dst_patches_data, dim=1)
 
-        # src_patches_data, Tensor, shape (batch_size, src_num_patches, num_channels * channel_embedding_dim)
-        src_patches_data = patches_data[:, :src_num_patches, :]
-        # dst_patches_data, Tensor, shape (batch_size, dst_num_patches, num_channels * channel_embedding_dim)
-        dst_patches_data = patches_data[:, src_num_patches : src_num_patches + dst_num_patches, :]
-        # src_patches_data, Tensor, shape (batch_size, num_channels * channel_embedding_dim)
-        src_patches_data = torch.mean(src_patches_data, dim=1)
-        # dst_patches_data, Tensor, shape (batch_size, num_channels * channel_embedding_dim)
-        dst_patches_data = torch.mean(dst_patches_data, dim=1)
-
-        # Tensor, shape (batch_size, output_dim)
-        src_node_embeddings = self.output_layer(src_patches_data)
-        # Tensor, shape (batch_size, output_dim)
-        dst_node_embeddings = self.output_layer(dst_patches_data)
+            # Tensor, shape (batch_size, output_dim)
+            src_node_embeddings = self.output_layer(src_patches_data)
+            # Tensor, shape (batch_size, output_dim)
+            dst_node_embeddings = self.output_layer(dst_patches_data)
 
         if analyze_length:
             return (

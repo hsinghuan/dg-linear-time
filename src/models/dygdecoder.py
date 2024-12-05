@@ -12,6 +12,7 @@ from tgb.linkproppred.evaluate import Evaluator
 from src.models.linkpredictor import LinkPredictor
 from src.models.modules.dygdecoder import DyGDecoder
 from src.models.modules.mlp import MergeLayer
+from src.utils.analysis import analyze_inter_event_time
 from src.utils.data import Data, NegativeEdgeSampler, get_neighbor_sampler
 
 
@@ -29,6 +30,7 @@ class DyGDecoderModule(LinkPredictor):
         num_heads: int = 2,
         dropout: float = 0.1,
         max_input_sequence_length: int = 512,
+        time_encoding_method: str = "sinusoidal",
         sample_neighbor_strategy: str = "recent",
         embed_method: str = "separate",
     ):
@@ -139,6 +141,31 @@ class DyGDecoderModule(LinkPredictor):
             if self.hparams.output_dim is not None
             else self.node_raw_features.shape[1]
         )
+
+        if self.hparams.time_encoding_method in ["exponential", "linear"]:
+            node_ids = np.concatenate([self.train_data.src_node_ids, self.train_data.dst_node_ids])
+            node_interact_times = np.concatenate(
+                [self.train_data.node_interact_times, self.train_data.node_interact_times]
+            )
+            (
+                _,
+                _,
+                nodes_neighbor_times_list,
+            ) = self.train_neighbor_sampler.get_all_first_hop_neighbors(
+                node_ids=node_ids, node_interact_times=node_interact_times
+            )
+            (
+                self.avg_inter_event_time,
+                self.median_inter_event_time,
+                self.std_inter_event_time,
+            ) = analyze_inter_event_time(nodes_neighbor_times_list, node_interact_times)
+            if self.hparams.time_encoding_method == "linear":
+                assert self.hparams.time_feat_dim == 1
+        else:
+            self.avg_inter_event_time = None
+            self.median_inter_event_time = None
+            self.std_inter_event_time = None
+
         backbone = DyGDecoder(
             node_raw_features=self.node_raw_features,
             edge_raw_features=self.edge_raw_features,
@@ -151,6 +178,10 @@ class DyGDecoderModule(LinkPredictor):
             num_heads=self.hparams.num_heads,
             dropout=self.hparams.dropout,
             max_input_sequence_length=self.hparams.max_input_sequence_length,
+            time_encoding_method=self.hparams.time_encoding_method,
+            avg_inter_event_time=self.avg_inter_event_time,
+            median_inter_event_time=self.median_inter_event_time,
+            std_inter_event_time=self.std_inter_event_time,
             embed_method=self.hparams.embed_method,
             device=self.device,
         )
@@ -161,6 +192,15 @@ class DyGDecoderModule(LinkPredictor):
             output_dim=1,
         )
         self.model = nn.Sequential(backbone, link_predictor).to(self.device)
+
+    def on_train_start(self):
+        if self.hparams.time_encoding_method == "exponential":
+            self.log(
+                "median_inter_event_time",
+                self.median_inter_event_time,
+                on_step=False,
+                on_epoch=True,
+            )
 
     def on_train_epoch_start(self) -> None:
         """Set the neighbor sampler for training."""
@@ -175,9 +215,22 @@ class DyGDecoderModule(LinkPredictor):
             self.train_data.dst_node_ids[train_data_indices],
             self.train_data.node_interact_times[train_data_indices],
         )
-        _, batch_neg_dst_node_ids = self.train_neg_edge_sampler.sample(
-            size=len(batch_src_node_ids)
-        )
+        # _, batch_neg_dst_node_ids = self.train_neg_edge_sampler.sample(
+        #     size=len(batch_src_node_ids)
+        # )
+        if self.train_neg_edge_sampler.negative_sample_strategy == "historical":
+            _, batch_neg_dst_node_ids = self.train_neg_edge_sampler.sample(
+                size=len(batch_src_node_ids),
+                batch_src_node_ids=batch_src_node_ids,
+                batch_dst_node_ids=batch_dst_node_ids,
+                current_batch_start_time=batch_node_interact_times[0],
+                current_batch_end_time=batch_node_interact_times[-1],
+            )
+        elif self.train_neg_edge_sampler.negative_sample_strategy == "random":
+            _, batch_neg_dst_node_ids = self.train_neg_edge_sampler.sample(
+                size=len(batch_src_node_ids)
+            )
+
         batch_neg_src_node_ids = batch_src_node_ids
 
         train_kwargs = {"analyze_length": self.current_epoch == 0}
@@ -256,10 +309,10 @@ class DyGDecoderModule(LinkPredictor):
             [torch.ones_like(pos_scores), torch.zeros_like(neg_scores)],
             dim=0,
         )
-
+        # print(f"predicts: {predicts} labels: {labels}")
         loss = self.loss_func(input=predicts, target=labels)
         self.log("train/loss", loss, on_step=True, on_epoch=False, prog_bar=True)
-
+        # print(f"loss: {loss}")
         return loss
 
     def _eval_step(self, batch: torch.Tensor, data: Data, stage: str) -> None:
@@ -735,7 +788,6 @@ class DyGDecoderModule(LinkPredictor):
 
         if self.dataset_type == "tgbl":
             if self.fit:
-                progress_bar = True
                 if self.fast_eval:
                     ap_log_name = f"{stage}/ap_fast"
                     auc_log_name = f"{stage}/auc_fast"
@@ -745,33 +797,36 @@ class DyGDecoderModule(LinkPredictor):
                     auc_log_name = f"{stage}/auc"
                     metric_log_name = f"{stage}/{self.metric}"
             else:
-                progress_bar = False
                 ap_log_name = f"{stage}/ap_final"
                 auc_log_name = f"{stage}/auc_final"
                 metric_log_name = f"{stage}/{self.metric}_final"
         else:
             if self.fit:
-                progress_bar = True
-                ap_log_name = f"{stage}/{self.negative_sample_strategy}/ap"
-                auc_log_name = f"{stage}/{self.negative_sample_strategy}/auc"
+                if stage != "train":
+                    ap_log_name = f"{stage}/{self.eval_negative_sample_strategy}/ap"
+                    auc_log_name = f"{stage}/{self.eval_negative_sample_strategy}/auc"
+                else:
+                    ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap"
+                    auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc"
             else:
-                progress_bar = False
-                ap_log_name = f"{stage}/{self.negative_sample_strategy}/ap_final"
-                auc_log_name = f"{stage}/{self.negative_sample_strategy}/auc_final"
+                if stage != "train":
+                    ap_log_name = f"{stage}/{self.eval_negative_sample_strategy}/ap_final"
+                    auc_log_name = f"{stage}/{self.eval_negative_sample_strategy}/auc_final"
+                else:
+                    ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap_final"
+                    auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc_final"
 
         self.log(
             ap_log_name,
             average_precision_score(y_true=labels.cpu().numpy(), y_score=scores.cpu().numpy()),
             on_step=False,
             on_epoch=True,
-            prog_bar=progress_bar,
         )
         self.log(
             auc_log_name,
             roc_auc_score(y_true=labels.cpu().numpy(), y_score=scores.cpu().numpy()),
             on_step=False,
             on_epoch=True,
-            prog_bar=progress_bar,
         )
 
         if perf_list is not None:
@@ -780,71 +835,70 @@ class DyGDecoderModule(LinkPredictor):
                 np.mean(perf_list),
                 on_step=False,
                 on_epoch=True,
-                prog_bar=progress_bar,
             )
 
-        # finer grained aggregation (aggregate to 4 bins) at trainer.validation() or trainer.test() stages
-        if not self.fit:
-            pos_scores_num = len(pos_scores)
-            neg_scores_num = len(neg_scores)
-            for i in range(4):
-                if i != 3:
-                    pos_scores_per_quarter = pos_scores[
-                        i * pos_scores_num // 4 : (i + 1) * pos_scores_num // 4
-                    ]
-                    neg_scores_per_quarter = neg_scores[
-                        i * neg_scores_num // 4 : (i + 1) * neg_scores_num // 4
-                    ]
-                else:
-                    pos_scores_per_quarter = pos_scores[i * pos_scores_num // 4 :]
-                    neg_scores_per_quarter = neg_scores[i * neg_scores_num // 4 :]
-                scores_per_quarter = torch.cat(
-                    (pos_scores_per_quarter, neg_scores_per_quarter), dim=0
-                )
-                labels_per_quarter = torch.cat(
-                    (
-                        torch.ones_like(pos_scores_per_quarter),
-                        torch.zeros_like(neg_scores_per_quarter),
-                    ),
-                    dim=0,
-                )
-                self.log(
-                    ap_log_name + f"_quarter_{i+1}",
-                    average_precision_score(
-                        y_true=labels_per_quarter.cpu().numpy(),
-                        y_score=scores_per_quarter.cpu().numpy(),
-                    ),
-                    on_step=False,
-                    on_epoch=True,
-                    prog_bar=progress_bar,
-                )
-                self.log(
-                    auc_log_name + f"_quarter_{i+1}",
-                    roc_auc_score(
-                        y_true=labels_per_quarter.cpu().numpy(),
-                        y_score=scores_per_quarter.cpu().numpy(),
-                    ),
-                    on_step=False,
-                    on_epoch=True,
-                    prog_bar=progress_bar,
-                )
+        # # finer grained aggregation (aggregate to 4 bins) at trainer.validation() or trainer.test() stages
+        # if not self.fit:
+        #     pos_scores_num = len(pos_scores)
+        #     neg_scores_num = len(neg_scores)
+        #     for i in range(4):
+        #         if i != 3:
+        #             pos_scores_per_quarter = pos_scores[
+        #                 i * pos_scores_num // 4 : (i + 1) * pos_scores_num // 4
+        #             ]
+        #             neg_scores_per_quarter = neg_scores[
+        #                 i * neg_scores_num // 4 : (i + 1) * neg_scores_num // 4
+        #             ]
+        #         else:
+        #             pos_scores_per_quarter = pos_scores[i * pos_scores_num // 4 :]
+        #             neg_scores_per_quarter = neg_scores[i * neg_scores_num // 4 :]
+        #         scores_per_quarter = torch.cat(
+        #             (pos_scores_per_quarter, neg_scores_per_quarter), dim=0
+        #         )
+        #         labels_per_quarter = torch.cat(
+        #             (
+        #                 torch.ones_like(pos_scores_per_quarter),
+        #                 torch.zeros_like(neg_scores_per_quarter),
+        #             ),
+        #             dim=0,
+        #         )
+        #         self.log(
+        #             ap_log_name + f"_quarter_{i+1}",
+        #             average_precision_score(
+        #                 y_true=labels_per_quarter.cpu().numpy(),
+        #                 y_score=scores_per_quarter.cpu().numpy(),
+        #             ),
+        #             on_step=False,
+        #             on_epoch=True,
+        #             prog_bar=progress_bar,
+        #         )
+        #         self.log(
+        #             auc_log_name + f"_quarter_{i+1}",
+        #             roc_auc_score(
+        #                 y_true=labels_per_quarter.cpu().numpy(),
+        #                 y_score=scores_per_quarter.cpu().numpy(),
+        #             ),
+        #             on_step=False,
+        #             on_epoch=True,
+        #             prog_bar=progress_bar,
+        #         )
 
-            if perf_list is not None:
-                perf_list_num = len(perf_list)
-                for i in range(4):
-                    if i != 3:
-                        perf_list_per_quarter = perf_list[
-                            i * perf_list_num // 4 : (i + 1) * perf_list_num // 4
-                        ]
-                    else:
-                        perf_list_per_quarter = perf_list[i * perf_list_num // 4 :]
-                    self.log(
-                        metric_log_name + f"_quarter_{i+1}",
-                        np.mean(perf_list_per_quarter),
-                        on_step=False,
-                        on_epoch=True,
-                        prog_bar=progress_bar,
-                    )
+        #     if perf_list is not None:
+        #         perf_list_num = len(perf_list)
+        #         for i in range(4):
+        #             if i != 3:
+        #                 perf_list_per_quarter = perf_list[
+        #                     i * perf_list_num // 4 : (i + 1) * perf_list_num // 4
+        #                 ]
+        #             else:
+        #                 perf_list_per_quarter = perf_list[i * perf_list_num // 4 :]
+        #             self.log(
+        #                 metric_log_name + f"_quarter_{i+1}",
+        #                 np.mean(perf_list_per_quarter),
+        #                 on_step=False,
+        #                 on_epoch=True,
+        #                 prog_bar=progress_bar,
+        #             )
 
         if analyze_length:
             length_analysis["pos"]["src"]["avg_time_diffs"] = np.concatenate(
@@ -907,5 +961,5 @@ class DyGDecoderModule(LinkPredictor):
                     os.makedirs(checkpoint_dir)
                 torch.save(
                     length_analysis,
-                    f"{checkpoint_dir}/{stage}_{self.negative_sample_strategy}_length_analysis.pt",
+                    f"{checkpoint_dir}/{stage}_{self.eval_negative_sample_strategy}_length_analysis.pt",
                 )

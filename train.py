@@ -32,7 +32,6 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"))
     logger: List[Logger] = instantiate_loggers(cfg.get("logger"))
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
-
     # object_dict = {
     #     "cfg": cfg,
     #     "datamodule": datamodule,
@@ -74,20 +73,32 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         if "NonTGBLDataModule" in cfg.data._target_:
             # if model is memory-based, we need to backup and reload the memory up to train manually because we repeatedly test below
             is_memory_based = True if cfg.model in ["tgn", "dyrep", "jodie"] else False
-            datamodule.negative_sample_strategy = "random"
+            datamodule.eval_negative_sample_strategy = "random"
             if is_memory_based:
                 model.backup_train_memory_bank()
+            trainer: Trainer = hydra.utils.instantiate(
+                cfg.trainer, callbacks=callbacks, logger=logger
+            )
             trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            # logger[0].log_metrics({'val/random/ap_final': random_val_results[0]["val/random/ap_final"]})
             if is_memory_based:
                 model.reload_train_memory_bank()
-            datamodule.negative_sample_strategy = "historical"
+            datamodule.eval_negative_sample_strategy = "historical"
+            trainer: Trainer = hydra.utils.instantiate(
+                cfg.trainer, callbacks=callbacks, logger=logger
+            )
             trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            # logger[0].log_metrics({'val/historical/ap_final': historical_val_results[0]["val/historical/ap_final"]})
             if is_memory_based:
                 model.reload_train_memory_bank()
-            datamodule.negative_sample_strategy = "inductive"
+            datamodule.eval_negative_sample_strategy = "inductive"
+            trainer: Trainer = hydra.utils.instantiate(
+                cfg.trainer, callbacks=callbacks, logger=logger
+            )
             trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            # logger[0].log_metrics({'val/inductive/ap_final': inductive_val_results[0]["val/inductive/ap_final"]})
         else:
-            trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            val_results = trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
         log.info(f"Best ckpt path: {ckpt_path}")
 
     val_metrics = trainer.callback_metrics
@@ -101,20 +112,32 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         if "NonTGBLDataModule" in cfg.data._target_:
             # if model is memory-based, we need to backup and reload the memory up to validation manually because we repeatedly test below
             is_memory_based = True if cfg.model in ["tgn", "dyrep", "jodie"] else False
-            datamodule.negative_sample_strategy = "random"
+            datamodule.eval_negative_sample_strategy = "random"
             if is_memory_based:
                 model.backup_val_memory_bank()
+            trainer: Trainer = hydra.utils.instantiate(
+                cfg.trainer, callbacks=callbacks, logger=logger
+            )
             trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            # logger[0].log_metrics({'test/random/ap_final': random_test_results[0]["test/random/ap_final"]})
             if is_memory_based:
                 model.reload_val_memory_bank()
-            datamodule.negative_sample_strategy = "historical"
+            datamodule.eval_negative_sample_strategy = "historical"
+            trainer: Trainer = hydra.utils.instantiate(
+                cfg.trainer, callbacks=callbacks, logger=logger
+            )
             trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            # logger[0].log_metrics({'test/historical/ap_final': historical_test_results[0]["test/historical/ap_final"]})
             if is_memory_based:
                 model.reload_val_memory_bank()
-            datamodule.negative_sample_strategy = "inductive"
+            datamodule.eval_negative_sample_strategy = "inductive"
+            trainer: Trainer = hydra.utils.instantiate(
+                cfg.trainer, callbacks=callbacks, logger=logger
+            )
             trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            # logger[0].log_metrics({'test/inductive/ap_final': inductive_test_results[0]["test/inductive/ap_final"]})
         else:
-            trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            test_results = trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
         log.info(f"Best ckpt path: {ckpt_path}")
 
     test_metrics = trainer.callback_metrics
