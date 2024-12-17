@@ -258,7 +258,6 @@ dependencies:
       - args==0.1.0
       - attrs==23.2.0
       - autopage==0.5.2
-      - causal-conv1d==1.4.0
       - charset-normalizer==3.3.2
       - chex==0.1.86
       - cliff==4.7.0
@@ -288,7 +287,7 @@ dependencies:
       - multidict==6.0.5
       - multiprocess==0.70.16
       - ninja==1.11.1.1
-      - numpy==2.0.0
+      - numpy==1.26.4
       - opt-einsum==3.3.0
       - optax==0.2.3
       - optuna==2.10.1
