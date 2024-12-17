@@ -1,11 +1,12 @@
 import numpy as np
 
 
-def analyze_history_length(
+def analyze_target_historical_event_time_diff(
     neighbor_times_list: list, node_interact_times: np.ndarray, num_neighbors: int
 ):
-    """Analyze the average, median, and maximum time differences between the current interaction
-    times in node_interact_times and the historical interacions in neighbor_times_list.
+    """Analyze the average, median, and maximum time differences between the target edge
+    interaction times in node_interact_times and the historical edge interaction event times in
+    neighbor_times_list.
 
     Also measure the number of temporal neighbors for each node. Note that we only consider the
     most recent num_neighbors neighbors for each node.
@@ -21,7 +22,7 @@ def analyze_history_length(
     :return num_temporal_neighbors: ndarray, shape (batch_size,), number of temporal neighbors for
         each node
     """
-    # Compute the time differences between the current interaction times and the historical interaction times
+    # Compute the time differences between the target edge interaction times and the historical edge interaction times
     # Initialize a ndarray of shape (batch_size, num_neighbors) to np.nan
     time_diffs = np.full((len(node_interact_times), num_neighbors), np.nan)
     num_temporal_neighbors = np.full(len(node_interact_times), np.nan)

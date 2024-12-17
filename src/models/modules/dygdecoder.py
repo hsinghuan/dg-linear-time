@@ -8,7 +8,10 @@ from torch.nn import MultiheadAttention
 
 from src.models.modules.dygformer import NeighborCooccurrenceEncoder
 from src.models.modules.time import ExpTimeEncoder, NoTimeEncoder, TimeEncoder
-from src.utils.analysis import analyze_history_length, analyze_inter_event_time
+from src.utils.analysis import (
+    analyze_inter_event_time,
+    analyze_target_historical_event_time_diff,
+)
 from src.utils.data import NeighborSampler
 
 
@@ -29,10 +32,12 @@ class DyGDecoder(nn.Module):
         dropout: float = 0.1,
         max_input_sequence_length: int = 512,
         time_encoding_method: str = "sinusoidal",
-        avg_inter_event_time: float = None,
-        median_inter_event_time: float = None,
-        std_inter_event_time: float = None,
+        avg_time_diff: float = None,
+        median_time_diff: float = None,
+        std_time_diff: float = None,
         embed_method: str = "separate",
+        add_bos: bool = True,
+        time_ablation: bool = False,
         device: str = "cpu",
     ):
         """
@@ -65,6 +70,8 @@ class DyGDecoder(nn.Module):
         self.max_input_sequence_length = max_input_sequence_length
         # self.encode_src_dst_separately = encode_src_dst_separately
         self.embed_method = embed_method
+        self.add_bos = add_bos
+        self.time_ablation = time_ablation
         self.device = device
 
         if time_encoding_method == "sinusoidal":
@@ -72,12 +79,12 @@ class DyGDecoder(nn.Module):
         elif time_encoding_method == "exponential":
             self.time_encoder = ExpTimeEncoder(
                 time_dim=time_feat_dim,
-                median_inter_event_time=median_inter_event_time,
+                median_inter_event_time=median_time_diff,
                 parameter_requires_grad=False,
             )
         elif time_encoding_method == "linear":
-            print("mean: ", avg_inter_event_time, "std: ", std_inter_event_time)
-            self.time_encoder = NoTimeEncoder(mean=avg_inter_event_time, std=std_inter_event_time)
+            # print("mean: ", avg_inter_event_time, "std: ", std_inter_event_time)
+            self.time_encoder = NoTimeEncoder(mean=avg_time_diff, std=std_time_diff)
 
         self.neighbor_co_occurrence_feat_dim = self.channel_embedding_dim
         self.neighbor_co_occurrence_encoder = NeighborCooccurrenceEncoder(
@@ -141,6 +148,12 @@ class DyGDecoder(nn.Module):
             bias=True,
         )
 
+        if self.add_bos:
+            self.bos_embedding = nn.Parameter(
+                torch.empty(1, self.num_channels * self.channel_embedding_dim), requires_grad=True
+            )
+            nn.init.normal_(self.bos_embedding)
+
     def compute_src_dst_node_temporal_embeddings(
         self,
         src_node_ids: np.ndarray,
@@ -176,7 +189,7 @@ class DyGDecoder(nn.Module):
                 src_median_time_diffs,
                 src_max_time_diffs,
                 src_num_temporal_neighbors,
-            ) = analyze_history_length(
+            ) = analyze_target_historical_event_time_diff(
                 src_nodes_neighbor_times_list,
                 node_interact_times,
                 num_neighbors=self.max_input_sequence_length - 1,
@@ -186,7 +199,7 @@ class DyGDecoder(nn.Module):
                 dst_median_time_diffs,
                 dst_max_time_diffs,
                 dst_num_temporal_neighbors,
-            ) = analyze_history_length(
+            ) = analyze_target_historical_event_time_diff(
                 dst_nodes_neighbor_times_list,
                 node_interact_times,
                 num_neighbors=self.max_input_sequence_length - 1,
@@ -384,16 +397,22 @@ class DyGDecoder(nn.Module):
             # if torch.isnan(dst_patches_data).any():
             #     print(dst_patches_data)
 
+            if self.add_bos:
+                # prepend the bos embedding to each sequence
+                patches_bos = self.bos_embedding.view(1, 1, -1).repeat(batch_size, 1, 1)
+                src_patches_data = torch.cat([patches_bos, src_patches_data], dim=1)
+                dst_patches_data = torch.cat([patches_bos, dst_patches_data], dim=1)
+                # make sure that we are indexing the right last token
+                offset = 1
+            else:
+                offset = 0
+
+            # print("src_patches_data:", src_patches_data.shape)
+            # print("dst_patches_data", dst_patches_data.shape)
+
             for transformer in self.transformers:
                 src_patches_data = transformer(src_patches_data)
                 dst_patches_data = transformer(dst_patches_data)
-
-            # print(f"src_patches_data after transformers has nan? {torch.isnan(src_patches_data).any()}")
-            # print(f"dst_patches_data after transformers has nan? {torch.isnan(dst_patches_data).any()}")
-            # if torch.isnan(src_patches_data).any():
-            #     print(src_patches_data)
-            # if torch.isnan(dst_patches_data).any():
-            #     print(dst_patches_data)
 
             # find the patch containing the last non-padding token of src_patches_data and dst_patches_data
             def last_non_zero(arr1d):
@@ -404,7 +423,10 @@ class DyGDecoder(nn.Module):
             src_last_nonpadding_indices = np.apply_along_axis(
                 last_non_zero, axis=1, arr=src_padded_nodes_neighbor_ids
             )
-            src_last_nonpadding_patch_indices = src_last_nonpadding_indices // self.patch_size
+            src_last_nonpadding_patch_indices = (
+                src_last_nonpadding_indices // self.patch_size + offset
+            )
+            # print("src_last_nonpadding_indices", src_last_nonpadding_patch_indices)
             src_patches_data = src_patches_data[
                 torch.arange(src_patches_data.size(0)), src_last_nonpadding_patch_indices, :
             ]
@@ -413,11 +435,13 @@ class DyGDecoder(nn.Module):
             dst_last_nonpadding_indices = np.apply_along_axis(
                 last_non_zero, axis=1, arr=dst_padded_nodes_neighbor_ids
             )
-            dst_last_nonpadding_patch_indices = dst_last_nonpadding_indices // self.patch_size
+            dst_last_nonpadding_patch_indices = (
+                dst_last_nonpadding_indices // self.patch_size + offset
+            )
             dst_patches_data = dst_patches_data[
                 torch.arange(dst_patches_data.size(0)), dst_last_nonpadding_patch_indices, :
             ]
-
+            # print("dst_last_nonpadding_indices", dst_last_nonpadding_patch_indices)
             # Tensor, shape (batch_size, output_dim)
             src_node_embeddings = self.output_layer(src_patches_data)
             # Tensor, shape (batch_size, output_dim)
@@ -425,6 +449,9 @@ class DyGDecoder(nn.Module):
 
         # VERSION 2: Merge source and destination sequences together and forward them
         elif self.embed_method == "naive_merge":
+            # print("bos embedding", self.bos_embedding[:,:5])
+            # print("src_nodes_neighbor_ids_list", src_padded_nodes_neighbor_ids)
+            # print("dst_nodes_neighbor_ids_list", dst_padded_nodes_neighbor_ids)
             (
                 merged_padded_nodes_neighbor_ids,
                 merged_padded_nodes_edge_ids,
@@ -442,7 +469,9 @@ class DyGDecoder(nn.Module):
                 dst_padded_nodes_neighbor_times,
                 dst_padded_nodes_neighbor_co_occurrence_features,
             )
-
+            # print("merged_padded_nodes_neighbor_ids", merged_padded_nodes_neighbor_ids)
+            # print("merged_src_node_indices", merged_src_node_indices)
+            # print("merged_dst_node_indices", merged_dst_node_indices)
             (
                 merged_padded_nodes_neighbor_node_raw_features,
                 merged_padded_nodes_edge_raw_features,
@@ -500,12 +529,21 @@ class DyGDecoder(nn.Module):
                 batch_size, merged_num_patches, self.num_channels * self.channel_embedding_dim
             )
 
+            if self.add_bos:
+                # prepend the bos embedding to the sequence
+                patches_bos = self.bos_embedding.view(1, 1, -1).repeat(batch_size, 1, 1)
+                merged_patches_data = torch.cat([patches_bos, merged_patches_data], dim=1)
+                # make sure that we are indexing the right last token
+                offset = 1
+            else:
+                offset = 0
+
             for transformer in self.transformers:
                 merged_patches_data = transformer(merged_patches_data)
 
             src_patch_indices, dst_patch_indices = (
-                merged_src_node_indices // self.patch_size,
-                merged_dst_node_indices // self.patch_size,
+                merged_src_node_indices // self.patch_size + offset,
+                merged_dst_node_indices // self.patch_size + offset,
             )
             src_patches_data = merged_patches_data[
                 torch.arange(merged_patches_data.size(0)), src_patch_indices, :
@@ -552,7 +590,6 @@ class DyGDecoder(nn.Module):
                 padded_nodes_neighbor_times=dst_padded_nodes_neighbor_times,
                 time_encoder=self.time_encoder,
             )
-
             # get the patches for source and destination nodes
             # src_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * node_feat_dim)
             # src_patches_nodes_edge_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * edge_feat_dim)
@@ -575,7 +612,8 @@ class DyGDecoder(nn.Module):
                     self.device
                 ),
             )
-
+            # print("src_padded_nodes_neighbor_times", src_padded_nodes_neighbor_times)
+            # print("dst_padded_nodes_neighbor_times", dst_padded_nodes_neighbor_times)
             # dst_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * node_feat_dim)
             # dst_patches_nodes_edge_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * edge_feat_dim)
             # dst_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, dst_num_patches, patch_size * time_feat_dim)
@@ -597,7 +635,6 @@ class DyGDecoder(nn.Module):
                     self.device
                 ),
             )
-
             # align the patch encoding dimension
             # Tensor, shape (batch_size, src_num_patches, channel_embedding_dim)
             src_patches_nodes_neighbor_node_raw_features = self.projection_layer["node"](
@@ -667,6 +704,43 @@ class DyGDecoder(nn.Module):
             # if torch.isnan(dst_patches_data).any():
             #     print(dst_patches_data)
 
+            if self.add_bos:
+                # prepend the bos embedding to each sequence
+                patches_bos = self.bos_embedding.view(1, 1, -1).repeat(batch_size, 1, 1)
+                src_patches_data = torch.cat([patches_bos, src_patches_data], dim=1)
+                dst_patches_data = torch.cat([patches_bos, dst_patches_data], dim=1)
+                # use the smallest possible timestamp of the batch - 1 as the timestamp of bos so every token will attend to bos
+                min_timestamp = (
+                    min(
+                        src_patches_nodes_neighbor_times[:, 0].min(),
+                        dst_patches_nodes_neighbor_times[:, 0].min(),
+                    )
+                    - 1.0
+                )
+                src_patches_nodes_neighbor_times = torch.cat(
+                    [
+                        torch.full(
+                            size=(batch_size, 1), fill_value=min_timestamp, device=self.device
+                        ),
+                        src_patches_nodes_neighbor_times,
+                    ],
+                    dim=1,
+                )
+                dst_patches_nodes_neighbor_times = torch.cat(
+                    [
+                        torch.full(
+                            size=(batch_size, 1), fill_value=min_timestamp, device=self.device
+                        ),
+                        dst_patches_nodes_neighbor_times,
+                    ],
+                    dim=1,
+                )
+                # print("src_patches_nodes_neighbor_times", src_patches_nodes_neighbor_times)
+                # print("dst_patches_nodes_neighbor_times", dst_patches_nodes_neighbor_times)
+                offset = 1
+            else:
+                offset = 0
+
             # compute source node embeddings by using src_patches_data as the self_seq and dst_patches_data as the cross_seq
             src_hidden_states = src_patches_data
             dst_hidden_states = dst_patches_data
@@ -688,7 +762,9 @@ class DyGDecoder(nn.Module):
             src_last_nonpadding_indices = np.apply_along_axis(
                 last_non_zero, axis=1, arr=src_padded_nodes_neighbor_ids
             )
-            src_last_nonpadding_patch_indices = src_last_nonpadding_indices // self.patch_size
+            src_last_nonpadding_patch_indices = (
+                src_last_nonpadding_indices // self.patch_size + offset
+            )
             src_node_embeddings = self.output_layer(
                 src_hidden_states[
                     torch.arange(src_hidden_states.size(0)), src_last_nonpadding_patch_indices, :
@@ -715,7 +791,9 @@ class DyGDecoder(nn.Module):
             dst_last_nonpadding_indices = np.apply_along_axis(
                 last_non_zero, axis=1, arr=dst_padded_nodes_neighbor_ids
             )
-            dst_last_nonpadding_patch_indices = dst_last_nonpadding_indices // self.patch_size
+            dst_last_nonpadding_patch_indices = (
+                dst_last_nonpadding_indices // self.patch_size + offset
+            )
             dst_node_embeddings = self.output_layer(
                 dst_hidden_states[
                     torch.arange(dst_hidden_states.size(0)), dst_last_nonpadding_patch_indices, :
@@ -839,16 +917,27 @@ class DyGDecoder(nn.Module):
         padded_nodes_edge_raw_features = self.edge_raw_features[
             torch.from_numpy(padded_nodes_edge_ids)
         ]
-        # Tensor, shape (batch_size, max_seq_length, 1)
-        padded_nodes_neighbor_times = torch.from_numpy(padded_nodes_neighbor_times)
-        padded_nodes_neighbor_time_features = torch.zeros_like(padded_nodes_neighbor_times).to(
-            self.device
-        )
-        padded_nodes_neighbor_time_features[:, : padded_nodes_neighbor_times.size(-1) - 1] = (
-            padded_nodes_neighbor_times[:, 1:] - padded_nodes_neighbor_times[:, :-1]
-        )
-        padded_nodes_neighbor_time_features[padded_nodes_neighbor_time_features < 0] = 0
-        # print("(before) padded_nodes_neighbor_time_features", padded_nodes_neighbor_time_features)
+
+        if self.time_ablation:
+            padded_nodes_neighbor_time_features = (
+                torch.from_numpy(node_interact_times[:, np.newaxis] - padded_nodes_neighbor_times)
+                .float()
+                .to(self.device)
+            )
+            # print("padded_nodes_neighbor_time_features", padded_nodes_neighbor_time_features)
+            # print("padded_nodes_neighbor_times", padded_nodes_neighbor_times)
+            # print("node_interact_times", node_interact_times)
+        else:
+            # Tensor, shape (batch_size, max_seq_length, 1)
+            padded_nodes_neighbor_times = torch.from_numpy(padded_nodes_neighbor_times)
+            padded_nodes_neighbor_time_features = torch.zeros_like(padded_nodes_neighbor_times).to(
+                self.device
+            )
+            padded_nodes_neighbor_time_features[:, : padded_nodes_neighbor_times.size(-1) - 1] = (
+                padded_nodes_neighbor_times[:, 1:] - padded_nodes_neighbor_times[:, :-1]
+            )
+            padded_nodes_neighbor_time_features[padded_nodes_neighbor_time_features < 0] = 0
+            # print("(before) padded_nodes_neighbor_time_features", padded_nodes_neighbor_time_features)
         padded_nodes_neighbor_time_features = time_encoder(
             timestamps=padded_nodes_neighbor_time_features
         )

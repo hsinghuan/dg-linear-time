@@ -9,7 +9,7 @@ defaults:
 logger:
   wandb:
     tags: ${tags}
-    group: uci-dygdecoder-sinusoidal
+    group: uci-dygdecoder-sinusoidal-historical
 
 tags: ["dev"]
 
@@ -17,11 +17,11 @@ seed: 1
 
 callbacks:
   early_stopping:
-    monitor: val/random/ap
+    monitor: val/historical/ap
     mode: max
     patience: 20
   model_checkpoint:
-    monitor: val/random/ap
+    monitor: val/historical/ap
     mode: max
 
 trainer:
@@ -36,3 +36,7 @@ model:
   time_encoding_method: sinusoidal
   channel_embedding_dim: 50
   dropout: 0.1
+
+data:
+  train_negative_sample_strategy: historical
+  eval_negative_sample_strategy: historical

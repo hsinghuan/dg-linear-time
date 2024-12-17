@@ -1,0 +1,16 @@
+_target_: src.models.dygdecoder.DyGDecoderModule
+
+time_feat_dim: 100
+channel_embedding_dim: 50
+patch_size: 1
+num_layers: 2
+num_heads: 2
+dropout: 0.1
+max_input_sequence_length: 32
+sample_neighbor_strategy: recent
+embed_method: separate
+optimizer:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.0001
+  weight_decay: 0.0

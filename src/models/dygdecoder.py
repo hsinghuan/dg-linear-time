@@ -12,7 +12,10 @@ from tgb.linkproppred.evaluate import Evaluator
 from src.models.linkpredictor import LinkPredictor
 from src.models.modules.dygdecoder import DyGDecoder
 from src.models.modules.mlp import MergeLayer
-from src.utils.analysis import analyze_inter_event_time
+from src.utils.analysis import (
+    analyze_inter_event_time,
+    analyze_target_historical_event_time_diff,
+)
 from src.utils.data import Data, NegativeEdgeSampler, get_neighbor_sampler
 
 
@@ -33,6 +36,7 @@ class DyGDecoderModule(LinkPredictor):
         time_encoding_method: str = "sinusoidal",
         sample_neighbor_strategy: str = "recent",
         embed_method: str = "separate",
+        time_ablation: bool = False,
     ):
         super().__init__(sample_neighbor_strategy=sample_neighbor_strategy)
         """Initialize DyGDecoder LightningModule."""
@@ -154,17 +158,27 @@ class DyGDecoderModule(LinkPredictor):
             ) = self.train_neighbor_sampler.get_all_first_hop_neighbors(
                 node_ids=node_ids, node_interact_times=node_interact_times
             )
-            (
-                self.avg_inter_event_time,
-                self.median_inter_event_time,
-                self.std_inter_event_time,
-            ) = analyze_inter_event_time(nodes_neighbor_times_list, node_interact_times)
+            if self.hparams.time_ablation:  # use target time - historical edge event time
+                avg_time_diffs_per_tgt_edge, _, _, _ = analyze_target_historical_event_time_diff(
+                    nodes_neighbor_times_list,
+                    node_interact_times,
+                    self.hparams.max_input_sequence_length,
+                )
+                self.avg_time_diff = np.nanmean(avg_time_diffs_per_tgt_edge)
+                self.std_time_diff = np.nanstd(avg_time_diffs_per_tgt_edge)
+                self.median_time_diff = None
+            else:
+                (
+                    self.avg_time_diff,
+                    self.median_time_diff,
+                    self.std_time_diff,
+                ) = analyze_inter_event_time(nodes_neighbor_times_list, node_interact_times)
             if self.hparams.time_encoding_method == "linear":
                 assert self.hparams.time_feat_dim == 1
         else:
-            self.avg_inter_event_time = None
-            self.median_inter_event_time = None
-            self.std_inter_event_time = None
+            self.avg_time_diff = None
+            self.median_time_diff = None
+            self.std_time_diff = None
 
         backbone = DyGDecoder(
             node_raw_features=self.node_raw_features,
@@ -179,10 +193,11 @@ class DyGDecoderModule(LinkPredictor):
             dropout=self.hparams.dropout,
             max_input_sequence_length=self.hparams.max_input_sequence_length,
             time_encoding_method=self.hparams.time_encoding_method,
-            avg_inter_event_time=self.avg_inter_event_time,
-            median_inter_event_time=self.median_inter_event_time,
-            std_inter_event_time=self.std_inter_event_time,
+            avg_time_diff=self.avg_time_diff,
+            median_time_diff=self.median_time_diff,
+            std_time_diff=self.std_time_diff,
             embed_method=self.hparams.embed_method,
+            time_ablation=self.hparams.time_ablation,
             device=self.device,
         )
         link_predictor = MergeLayer(

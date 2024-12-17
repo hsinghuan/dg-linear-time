@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch.nn import MultiheadAttention
 
 from src.models.modules.time import TimeEncoder
-from src.utils.analysis import analyze_history_length
+from src.utils.analysis import analyze_target_historical_event_time_diff
 from src.utils.data import NeighborSampler
 
 
@@ -147,7 +147,7 @@ class DyGFormer(nn.Module):
                 src_median_time_diffs,
                 src_max_time_diffs,
                 src_num_temporal_neighbors,
-            ) = analyze_history_length(
+            ) = analyze_target_historical_event_time_diff(
                 src_nodes_neighbor_times_list,
                 node_interact_times,
                 num_neighbors=self.max_input_sequence_length - 1,
@@ -157,7 +157,7 @@ class DyGFormer(nn.Module):
                 dst_median_time_diffs,
                 dst_max_time_diffs,
                 dst_num_temporal_neighbors,
-            ) = analyze_history_length(
+            ) = analyze_target_historical_event_time_diff(
                 dst_nodes_neighbor_times_list,
                 node_interact_times,
                 num_neighbors=self.max_input_sequence_length - 1,
