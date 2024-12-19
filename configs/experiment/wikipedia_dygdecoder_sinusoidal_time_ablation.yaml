@@ -33,6 +33,6 @@ trainer:
 model:
   embed_method: separate
   channel_embedding_dim: 50
-  dropout: 0.1
+  dropout: 0.3
   time_encoding_method: sinusoidal
   time_ablation: true

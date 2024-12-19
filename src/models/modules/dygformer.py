@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import MultiheadAttention
 
-from src.models.modules.time import TimeEncoder
+from src.models.modules.time import NoTimeEncoder, TimeEncoder
 from src.utils.analysis import analyze_target_historical_event_time_diff
 from src.utils.data import NeighborSampler
 
@@ -27,6 +27,9 @@ class DyGFormer(nn.Module):
         dropout: float = 0.1,
         max_input_sequence_length: int = 512,
         embed_method: str = "original",  # original dygformer merges the two sequences when forwarding through transformer
+        time_encoding_method: str = "sinusoidal",
+        avg_time_diff: float = None,
+        std_time_diff: float = None,
         device: str = "cpu",
     ):
         """
@@ -60,7 +63,16 @@ class DyGFormer(nn.Module):
         self.embed_method = embed_method
         self.device = device
 
-        self.time_encoder = TimeEncoder(time_dim=time_feat_dim)
+        # print("time encoding method", time_encoding_method)
+        # print("avg_time_diff", avg_time_diff)
+        # print("std_time_diff", std_time_diff)
+        if time_encoding_method == "sinusoidal":
+            self.time_encoder = TimeEncoder(
+                time_dim=time_feat_dim, mean=avg_time_diff, std=std_time_diff
+            )
+        elif time_encoding_method == "linear":
+            # print("linear!")
+            self.time_encoder = NoTimeEncoder(mean=avg_time_diff, std=std_time_diff)
 
         self.neighbor_co_occurrence_feat_dim = self.channel_embedding_dim
         self.neighbor_co_occurrence_encoder = NeighborCooccurrenceEncoder(

@@ -37,6 +37,7 @@ class DyGDecoderModule(LinkPredictor):
         sample_neighbor_strategy: str = "recent",
         embed_method: str = "separate",
         time_ablation: bool = False,
+        scale_sinusoidal_input: bool = False,
     ):
         super().__init__(sample_neighbor_strategy=sample_neighbor_strategy)
         """Initialize DyGDecoder LightningModule."""
@@ -176,9 +177,32 @@ class DyGDecoderModule(LinkPredictor):
             if self.hparams.time_encoding_method == "linear":
                 assert self.hparams.time_feat_dim == 1
         else:
-            self.avg_time_diff = None
-            self.median_time_diff = None
-            self.std_time_diff = None
+            if self.hparams.scale_sinusoidal_input:
+                node_ids = np.concatenate(
+                    [self.train_data.src_node_ids, self.train_data.dst_node_ids]
+                )
+                node_interact_times = np.concatenate(
+                    [self.train_data.node_interact_times, self.train_data.node_interact_times]
+                )
+                (
+                    _,
+                    _,
+                    nodes_neighbor_times_list,
+                ) = self.train_neighbor_sampler.get_all_first_hop_neighbors(
+                    node_ids=node_ids, node_interact_times=node_interact_times
+                )
+                avg_time_diffs_per_tgt_edge, _, _, _ = analyze_target_historical_event_time_diff(
+                    nodes_neighbor_times_list,
+                    node_interact_times,
+                    self.hparams.max_input_sequence_length,
+                )
+                self.avg_time_diff = np.nanmean(avg_time_diffs_per_tgt_edge)
+                self.std_time_diff = np.nanstd(avg_time_diffs_per_tgt_edge)
+                self.median_time_diff = None
+            else:
+                self.avg_time_diff = 0
+                self.median_time_diff = None
+                self.std_time_diff = 1
 
         backbone = DyGDecoder(
             node_raw_features=self.node_raw_features,

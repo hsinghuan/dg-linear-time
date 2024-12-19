@@ -6,7 +6,13 @@ import torch.nn as nn
 class TimeEncoder(nn.Module):
     """Time encoder for encoding the elapsed time into a ``time_dim'' dimensional vector."""
 
-    def __init__(self, time_dim: int, parameter_requires_grad: bool = True):
+    def __init__(
+        self,
+        time_dim: int,
+        parameter_requires_grad: bool = True,
+        mean: float = 0.0,
+        std: float = 1.0,
+    ):
         """
         :param time_dim: int, dimension of time encodings
         :param parameter_requires_grad: boolean, whether the parameter in TimeEncoder needs gradient
@@ -26,12 +32,15 @@ class TimeEncoder(nn.Module):
         if not parameter_requires_grad:
             self.w.weight.requires_grad = False
             self.w.bias.requires_grad = False
+        self.mean = mean
+        self.std = std
 
     def forward(self, timestamps: torch.Tensor):
         """Compute time encodings of time in timestamps :param timestamps: Tensor, shape
         (batch_size, seq_len) :return:"""
         # Tensor, shape (batch_size, seq_len, 1)
         timestamps = timestamps.unsqueeze(dim=2)
+        timestamps = (timestamps - self.mean) / self.std
         # print("timestamps shape", timestamps.shape)
         # Tensor, shape (batch_size, seq_len, time_dim)
         output = torch.cos(self.w(timestamps))

@@ -9,7 +9,7 @@ defaults:
 logger:
   wandb:
     tags: ${tags}
-    group: enron-dygdecoder-sinusoidal-time-ablation
+    group: enron-dygdecoder-sinusoidal-time-scale-ablation
 
 tags: ["dev"]
 
@@ -38,3 +38,4 @@ model:
   channel_embedding_dim: 50
   dropout: 0.3
   time_ablation: true
+  scale_sinusoidal_input: true

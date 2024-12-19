@@ -12,6 +12,7 @@ from tgb.linkproppred.evaluate import Evaluator
 from src.models.linkpredictor import LinkPredictor
 from src.models.modules.dygformer import DyGFormer
 from src.models.modules.mlp import MergeLayer
+from src.utils.analysis import analyze_target_historical_event_time_diff
 from src.utils.data import Data, NegativeEdgeSampler, get_neighbor_sampler
 
 
@@ -31,6 +32,8 @@ class DyGFormerModule(LinkPredictor):
         max_input_sequence_length: int = 512,
         embed_method: str = "original",
         sample_neighbor_strategy: str = "recent",
+        time_encoding_method: str = "sinusoidal",
+        scale_sinusoidal_input: bool = False,
     ):
         super().__init__(sample_neighbor_strategy=sample_neighbor_strategy)
         """Initialize DyGFormer LightningModule."""
@@ -139,6 +142,36 @@ class DyGFormerModule(LinkPredictor):
             if self.hparams.output_dim is not None
             else self.node_raw_features.shape[1]
         )
+
+        node_ids = np.concatenate([self.train_data.src_node_ids, self.train_data.dst_node_ids])
+        node_interact_times = np.concatenate(
+            [self.train_data.node_interact_times, self.train_data.node_interact_times]
+        )
+        (
+            _,
+            _,
+            nodes_neighbor_times_list,
+        ) = self.train_neighbor_sampler.get_all_first_hop_neighbors(
+            node_ids=node_ids, node_interact_times=node_interact_times
+        )
+        avg_time_diffs_per_tgt_edge, _, _, _ = analyze_target_historical_event_time_diff(
+            nodes_neighbor_times_list,
+            node_interact_times,
+            self.hparams.max_input_sequence_length,
+        )
+
+        if self.hparams.time_encoding_method == "sinusoidal":
+            if self.hparams.scale_sinusoidal_input:
+                self.avg_time_diff = np.nanmean(avg_time_diffs_per_tgt_edge)
+                self.std_time_diff = np.nanstd(avg_time_diffs_per_tgt_edge)
+            else:
+                self.avg_time_diff = 0
+                self.std_time_diff = 1
+        elif self.hparams.time_encoding_method == "linear":
+            assert self.hparams.time_feat_dim == 1
+            self.avg_time_diff = np.nanmean(avg_time_diffs_per_tgt_edge)
+            self.std_time_diff = np.nanstd(avg_time_diffs_per_tgt_edge)
+
         backbone = DyGFormer(
             node_raw_features=self.node_raw_features,
             edge_raw_features=self.edge_raw_features,
@@ -152,6 +185,9 @@ class DyGFormerModule(LinkPredictor):
             dropout=self.hparams.dropout,
             max_input_sequence_length=self.hparams.max_input_sequence_length,
             embed_method=self.hparams.embed_method,
+            time_encoding_method=self.hparams.time_encoding_method,
+            avg_time_diff=self.avg_time_diff,
+            std_time_diff=self.std_time_diff,
             device=self.device,
         )
         link_predictor = MergeLayer(

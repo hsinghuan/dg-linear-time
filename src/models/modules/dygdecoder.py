@@ -74,8 +74,13 @@ class DyGDecoder(nn.Module):
         self.time_ablation = time_ablation
         self.device = device
 
+        # print("time encoding method:", time_encoding_method)
+        # print("avg_time_diff:", avg_time_diff)
+        # print("std_time_diff:", std_time_diff)
         if time_encoding_method == "sinusoidal":
-            self.time_encoder = TimeEncoder(time_dim=time_feat_dim)
+            self.time_encoder = TimeEncoder(
+                time_dim=time_feat_dim, mean=avg_time_diff, std=std_time_diff
+            )
         elif time_encoding_method == "exponential":
             self.time_encoder = ExpTimeEncoder(
                 time_dim=time_feat_dim,
@@ -83,7 +88,6 @@ class DyGDecoder(nn.Module):
                 parameter_requires_grad=False,
             )
         elif time_encoding_method == "linear":
-            # print("mean: ", avg_inter_event_time, "std: ", std_inter_event_time)
             self.time_encoder = NoTimeEncoder(mean=avg_time_diff, std=std_time_diff)
 
         self.neighbor_co_occurrence_feat_dim = self.channel_embedding_dim
