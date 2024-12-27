@@ -32,3 +32,5 @@ trainer:
 
 model:
   scale_sinusoidal_input: true
+  channel_embedding_dim: 30
+  dropout: 0.3

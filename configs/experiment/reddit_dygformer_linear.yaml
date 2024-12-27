@@ -33,6 +33,7 @@ trainer:
 model:
   max_input_sequence_length: 64
   patch_size: 2
-  dropout: 0.2
   time_encoding_method: linear
   time_feat_dim: 1
+  channel_embedding_dim: 30
+  dropout: 0.5

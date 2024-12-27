@@ -36,6 +36,6 @@ model:
   embed_method: separate
   time_encoding_method: sinusoidal
   channel_embedding_dim: 30
-  dropout: 0.3
+  dropout: 0.5
   time_ablation: true
   scale_sinusoidal_input: true

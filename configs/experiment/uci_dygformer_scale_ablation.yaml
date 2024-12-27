@@ -34,3 +34,5 @@ model:
   max_input_sequence_length: 32
   patch_size: 1
   scale_sinusoidal_input: true
+  channel_embedding_dim: 30
+  dropout: 0.1

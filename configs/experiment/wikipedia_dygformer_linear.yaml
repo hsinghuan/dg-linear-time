@@ -33,3 +33,5 @@ trainer:
 model:
   time_encoding_method: "linear"
   time_feat_dim: 1
+  channel_embedding_dim: 30
+  dropout: 0.1

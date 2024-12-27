@@ -35,5 +35,5 @@ model:
   patch_size: 2
   embed_method: separate
   channel_embedding_dim: 30
-  dropout: 0.1
+  dropout: 0.5
   scale_sinusoidal_input: true
