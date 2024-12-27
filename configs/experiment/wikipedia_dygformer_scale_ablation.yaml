@@ -31,6 +31,6 @@ trainer:
   num_sanity_val_steps: 0
 
 model:
-  scale_sinusoidal_input: true
+  scale_timediff: true
   channel_embedding_dim: 30
   dropout: 0.3

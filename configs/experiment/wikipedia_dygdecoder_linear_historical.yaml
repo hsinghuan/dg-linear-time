@@ -36,6 +36,8 @@ model:
   time_feat_dim: 1
   channel_embedding_dim: 50
   dropout: 0.3
+  scale_timediff: true
+  inter_event_time: true
 
 data:
   train_negative_sample_strategy: historical

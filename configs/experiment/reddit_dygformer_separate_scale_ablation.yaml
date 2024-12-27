@@ -36,4 +36,4 @@ model:
   embed_method: separate
   channel_embedding_dim: 30
   dropout: 0.5
-  scale_sinusoidal_input: true
+  scale_timediff: true

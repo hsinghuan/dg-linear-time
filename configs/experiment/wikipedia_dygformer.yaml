@@ -29,3 +29,6 @@ trainer:
   max_epochs: 100
   devices: [1]
   num_sanity_val_steps: 0
+
+model:
+  scale_timediff: false

@@ -34,6 +34,7 @@ model:
   embed_method: separate
   channel_embedding_dim: 30
   dropout: 0.1
+  scale_timediff: false
 
 data:
   train_negative_sample_strategy: historical

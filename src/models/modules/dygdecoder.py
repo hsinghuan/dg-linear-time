@@ -37,7 +37,7 @@ class DyGDecoder(nn.Module):
         std_time_diff: float = None,
         embed_method: str = "separate",
         add_bos: bool = True,
-        time_ablation: bool = False,
+        inter_event_time: bool = False,
         device: str = "cpu",
     ):
         """
@@ -71,7 +71,7 @@ class DyGDecoder(nn.Module):
         # self.encode_src_dst_separately = encode_src_dst_separately
         self.embed_method = embed_method
         self.add_bos = add_bos
-        self.time_ablation = time_ablation
+        self.inter_event_time = inter_event_time
         self.device = device
 
         # print("time encoding method:", time_encoding_method)
@@ -922,7 +922,7 @@ class DyGDecoder(nn.Module):
             torch.from_numpy(padded_nodes_edge_ids)
         ]
 
-        if self.time_ablation:
+        if not self.inter_event_time:  # use target time - historical edge event time
             padded_nodes_neighbor_time_features = (
                 torch.from_numpy(node_interact_times[:, np.newaxis] - padded_nodes_neighbor_times)
                 .float()
@@ -931,7 +931,7 @@ class DyGDecoder(nn.Module):
             # print("padded_nodes_neighbor_time_features", padded_nodes_neighbor_time_features)
             # print("padded_nodes_neighbor_times", padded_nodes_neighbor_times)
             # print("node_interact_times", node_interact_times)
-        else:
+        else:  # use inter-event time
             # Tensor, shape (batch_size, max_seq_length, 1)
             padded_nodes_neighbor_times = torch.from_numpy(padded_nodes_neighbor_times)
             padded_nodes_neighbor_time_features = torch.zeros_like(padded_nodes_neighbor_times).to(

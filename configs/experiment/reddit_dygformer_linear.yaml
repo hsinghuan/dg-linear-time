@@ -37,3 +37,4 @@ model:
   time_feat_dim: 1
   channel_embedding_dim: 30
   dropout: 0.5
+  scale_timediff: true

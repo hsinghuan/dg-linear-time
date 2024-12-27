@@ -35,5 +35,5 @@ model:
   channel_embedding_dim: 30
   dropout: 0.3
   time_encoding_method: sinusoidal
-  time_ablation: true
-  scale_sinusoidal_input: true
+  scale_timediff: true
+  inter_event_time: false

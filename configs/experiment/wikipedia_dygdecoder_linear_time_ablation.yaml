@@ -36,4 +36,5 @@ model:
   time_feat_dim: 1
   channel_embedding_dim: 50
   dropout: 0.5
-  time_ablation: true
+  scale_timediff: true
+  inter_event_time: false

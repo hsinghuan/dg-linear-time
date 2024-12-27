@@ -35,6 +35,7 @@ model:
   patch_size: 8
   channel_embedding_dim: 50
   dropout: 0.5
+  scale_timediff: false
 
 data:
   train_negative_sample_strategy: historical

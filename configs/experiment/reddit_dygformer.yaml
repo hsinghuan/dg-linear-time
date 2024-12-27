@@ -34,3 +34,4 @@ model:
   max_input_sequence_length: 64
   patch_size: 2
   dropout: 0.2
+  scale_timediff: false
