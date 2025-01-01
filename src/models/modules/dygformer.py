@@ -5,7 +5,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import MultiheadAttention
 
-from src.models.modules.time import NoTimeEncoder, TimeEncoder
+from src.models.modules.time import (
+    CosineTimeEncoder,
+    NoTimeEncoder,
+    SineCosineTimeEncoder,
+)
 from src.utils.analysis import analyze_target_historical_event_time_diff
 from src.utils.data import NeighborSampler
 
@@ -67,7 +71,11 @@ class DyGFormer(nn.Module):
         # print("avg_time_diff", avg_time_diff)
         # print("std_time_diff", std_time_diff)
         if time_encoding_method == "sinusoidal":
-            self.time_encoder = TimeEncoder(
+            self.time_encoder = CosineTimeEncoder(
+                time_dim=time_feat_dim, mean=avg_time_diff, std=std_time_diff
+            )
+        elif time_encoding_method == "sinecosine":
+            self.time_encoder = SineCosineTimeEncoder(
                 time_dim=time_feat_dim, mean=avg_time_diff, std=std_time_diff
             )
         elif time_encoding_method == "linear":
@@ -527,7 +535,7 @@ class DyGFormer(nn.Module):
         padded_nodes_neighbor_ids: np.ndarray,
         padded_nodes_edge_ids: np.ndarray,
         padded_nodes_neighbor_times: np.ndarray,
-        time_encoder: TimeEncoder,
+        time_encoder,
     ):
         """Get node, edge and time features :param node_interact_times: ndarray, shape
         (batch_size,) :param padded_nodes_neighbor_ids: ndarray, shape (batch_size, max_seq_length)

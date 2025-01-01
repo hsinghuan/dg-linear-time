@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 
-class TimeEncoder(nn.Module):
+class CosineTimeEncoder(nn.Module):
     """Time encoder for encoding the elapsed time into a ``time_dim'' dimensional vector."""
 
     def __init__(
@@ -45,6 +45,53 @@ class TimeEncoder(nn.Module):
         # Tensor, shape (batch_size, seq_len, time_dim)
         output = torch.cos(self.w(timestamps))
         # print("output shape", output.shape)
+        return output
+
+
+class SineCosineTimeEncoder(nn.Module):
+    """Time encoder for encoding the elapsed time into a ``time_dim'' dimensional vector containing
+    both sine and cosine transformations."""
+
+    def __init__(
+        self,
+        time_dim: int,
+        parameter_requires_grad: bool = True,
+        mean: float = 0.0,
+        std: float = 1.0,
+    ):
+        """
+        :param time_dim: int, dimension of time encodings
+        :param parameter_requires_grad: boolean, whether the parameter in TimeEncoder needs gradient
+        """
+        super().__init__()
+        assert (
+            time_dim % 2 == 0
+        ), "time_dim must be an even number to split into equal number of sine and cosine transformations"
+        self.time_dim = time_dim
+        self.half_time_dim = time_dim // 2
+        # trainable parameters for time encoding
+        self.w = nn.Linear(1, self.half_time_dim)
+        self.w.weight = nn.Parameter(
+            (
+                torch.from_numpy(1 / 10 ** np.linspace(0, 9, self.half_time_dim, dtype=np.float32))
+            ).reshape(self.half_time_dim, -1)
+        )
+        self.w.bias = nn.Parameter(torch.zeros(self.half_time_dim))
+
+        if not parameter_requires_grad:
+            self.w.weight.requires_grad = False
+            self.w.bias.requires_grad = False
+        self.mean = mean
+        self.std = std
+
+    def forward(self, timestamps: torch.Tensor):
+        """Compute time encodings of time in timestamps :param timestamps: Tensor, shape
+        (batch_size, seq_len) :return:"""
+        # Tensor, shape (batch_size, seq_len, 1)
+        timestamps = timestamps.unsqueeze(dim=2)
+        timestamps = (timestamps - self.mean) / self.std
+        # Tensor, shape (batch_size, seq_len, time_dim)
+        output = torch.cat([torch.cos(self.w(timestamps)), torch.sin(self.w(timestamps))], dim=-1)
         return output
 
 
@@ -120,6 +167,22 @@ class NoTimeEncoder(nn.Module):
         return timestamps
 
 
+class LinearTimeEncoder(nn.Module):
+    def __init__(
+        self,
+        time_dim: int,
+        mean: float = 0.0,
+        std: float = 1.0,
+    ):
+        super().__init__()
+        self.no_time_encoder = NoTimeEncoder(mean=mean, std=std)
+        self.linear = nn.Linear(1, time_dim)
+
+    def forward(self, timestamps: torch.Tensor):
+        timestamps = self.no_time_encoder(timestamps)
+        return self.linear(timestamps)
+
+
 # exp_time_encoder = TimeEncoder(time_dim=8)
 # timestamps = torch.tensor([[3000,1000,10]], dtype=torch.float32)
 # print(timestamps)
@@ -137,3 +200,17 @@ class NoTimeEncoder(nn.Module):
 # print(timestamps)
 # output = no_time_encoder(timestamps)
 # print(output)
+
+# linear_time_encoder = LinearTimeEncoder(time_dim=8, mean=100, std=100)
+# timestamps = torch.tensor([[3000,1000,10], [20, 30,100]], dtype=torch.float32)
+# print(timestamps)
+# output = linear_time_encoder(timestamps)
+# print(output)
+
+# sinecosine_time_encoder = SineCosineTimeEncoder(time_dim=8, mean=0, std=1)
+# timestamps = torch.tensor([[3000,1000,10], [20, 30,100]], dtype=torch.float32)
+# print(timestamps)
+# print(timestamps.shape)
+# output = sinecosine_time_encoder(timestamps)
+# print(output)
+# print(output.shape)

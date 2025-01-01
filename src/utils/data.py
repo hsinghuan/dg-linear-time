@@ -152,6 +152,8 @@ class NeighborSampler:
         # return 0 for the first position in self.nodes_neighbor_times since the value at the first position is empty
         # print(f"len of self.nodes_neighbor_times: {len(self.nodes_neighbor_times)}")
         # print(f"node_id: {node_id}")
+        # print("nodes neighbor times", self.nodes_neighbor_times[node_id])
+        # print("interact time", interact_time)
         i = np.searchsorted(self.nodes_neighbor_times[node_id], interact_time)
 
         if return_sampled_probabilities:

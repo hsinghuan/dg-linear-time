@@ -2,7 +2,10 @@ import numpy as np
 
 
 def analyze_target_historical_event_time_diff(
-    neighbor_times_list: list, node_interact_times: np.ndarray, num_neighbors: int
+    neighbor_times_list: list,
+    node_interact_times: np.ndarray,
+    num_neighbors: int,
+    sample_neighbor_strategy: str = "recent",
 ):
     """Analyze the average, median, and maximum time differences between the target edge
     interaction times in node_interact_times and the historical edge interaction event times in
@@ -13,6 +16,8 @@ def analyze_target_historical_event_time_diff(
     :param neighbor_times_list: list of ndarrays of neighbor interaction times for each node
     :param node_interact_times: ndarray, node interaction times for each node in the current batch
     :param num_neighbors: int, number of temporal neighbors to consider for each node
+    :param sample_neighbor_strategy: str, strategy to sample neighbors to analyze time differences,
+        either "recent" or "uniform"
     :return avg_time_diff: ndarray, shape (batch_size,), average time differences between the
         current interaction time and the historical interaction times
     :return median_time_diff: ndarray, shape (batch_size,), median time differences between the
@@ -28,7 +33,14 @@ def analyze_target_historical_event_time_diff(
     num_temporal_neighbors = np.full(len(node_interact_times), np.nan)
     for i, neighbor_times in enumerate(neighbor_times_list):
         # Only consider the most recent num_neighbors neighbors
-        neighbor_times = neighbor_times[-num_neighbors:]
+        if sample_neighbor_strategy == "recent":
+            neighbor_times = neighbor_times[-num_neighbors:]
+        elif sample_neighbor_strategy == "uniform":
+            if len(neighbor_times) > 0:
+                sampled_indices = np.random.choice(a=len(neighbor_times), size=num_neighbors)
+                neighbor_times = neighbor_times[sampled_indices]
+                neighbor_times = np.sort(neighbor_times)
+
         num_temporal_neighbors[i] = len(neighbor_times)
         if len(neighbor_times) > 0:
             time_diffs[i, -len(neighbor_times) :] = node_interact_times[i] - neighbor_times

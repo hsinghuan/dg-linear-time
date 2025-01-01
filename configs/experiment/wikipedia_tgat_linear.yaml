@@ -2,14 +2,14 @@
 
 defaults:
   - override /data: wikipedia
-  - override /model: dygdecoder
+  - override /model: tgat
   - override /callbacks: default
   - override /trainer: gpu
 
 logger:
   wandb:
     tags: ${tags}
-    group: wikipedia-dygdecoder-linear-historical
+    group: wikipedia-tgat-linear
 
 tags: ["dev"]
 
@@ -17,11 +17,11 @@ seed: 1
 
 callbacks:
   early_stopping:
-    monitor: val/historical/ap
+    monitor: val/random/ap
     mode: max
     patience: 20
   model_checkpoint:
-    monitor: val/historical/ap
+    monitor: val/random/ap
     mode: max
 
 trainer:
@@ -31,14 +31,6 @@ trainer:
   num_sanity_val_steps: 0
 
 model:
-  embed_method: separate
-  time_encoding_method: linear
-  time_feat_dim: 1
   scale_timediff: true
-  inter_event_time: false
-  channel_embedding_dim: 50
+  time_encoding_method: linear
   dropout: 0.3
-
-data:
-  train_negative_sample_strategy: historical
-  eval_negative_sample_strategy: historical
