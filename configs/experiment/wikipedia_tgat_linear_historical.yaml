@@ -33,7 +33,7 @@ trainer:
 model:
   scale_timediff: true
   time_encoding_method: linear
-  dropout: 0.3
+  dropout: 0.5
 
 data:
   train_negative_sample_strategy: historical

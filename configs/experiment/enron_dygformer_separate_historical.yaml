@@ -35,7 +35,7 @@ model:
   patch_size: 8
   embed_method: separate
   channel_embedding_dim: 50
-  dropout: 0.1
+  dropout: 0.5
   scale_timediff: false
 
 data:
