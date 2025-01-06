@@ -9,7 +9,7 @@ defaults:
 logger:
   wandb:
     tags: ${tags}
-    group: uci-dygdecoder-linear
+    group: uci-dygdecoder-sinusoidal-interevent
 
 tags: ["dev"]
 
@@ -33,9 +33,8 @@ trainer:
 model:
   max_input_sequence_length: 32
   patch_size: 1
-  time_encoding_method: linear
-  time_feat_dim: 1
-  channel_embedding_dim: 30
+  time_encoding_method: sinusoidal
+  channel_embedding_dim: 50
   dropout: 0.1
-  scale_timediff: true
-  inter_event_time: false
+  scale_timediff: false
+  inter_event_time: true

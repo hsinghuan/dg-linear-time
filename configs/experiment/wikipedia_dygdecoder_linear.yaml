@@ -35,6 +35,6 @@ model:
   time_encoding_method: linear
   time_feat_dim: 1
   channel_embedding_dim: 50
-  dropout: 0.1
+  dropout: 0.5
   scale_timediff: true
-  inter_event_time: true
+  inter_event_time: false

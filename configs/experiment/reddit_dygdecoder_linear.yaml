@@ -39,4 +39,4 @@ model:
   channel_embedding_dim: 50
   dropout: 0.5
   scale_timediff: true
-  inter_event_time: true
+  inter_event_time: false
