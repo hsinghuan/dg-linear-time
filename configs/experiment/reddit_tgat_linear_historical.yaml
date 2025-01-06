@@ -32,7 +32,7 @@ trainer:
 
 model:
   sample_neighbor_strategy: uniform
-  dropout: 0.3
+  dropout: 0.1
   scale_timediff: true
   time_encoding_method: linear
 
