@@ -36,7 +36,6 @@ model:
   dropout: 0.1
   time_encoding_method: sinusoidal
   scale_timediff: false
-  inter_event_time: true
 
 data:
   train_negative_sample_strategy: historical

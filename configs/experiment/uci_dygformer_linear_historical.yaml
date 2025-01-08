@@ -2,14 +2,14 @@
 
 defaults:
   - override /data: uci
-  - override /model: dygdecoder
+  - override /model: dygformer
   - override /callbacks: default
   - override /trainer: gpu
 
 logger:
   wandb:
     tags: ${tags}
-    group: uci-dygdecoder-sinusoidal-historical
+    group: uci-dygformer-linear-historical
 
 tags: ["dev"]
 
@@ -33,10 +33,11 @@ trainer:
 model:
   max_input_sequence_length: 32
   patch_size: 1
-  time_encoding_method: sinusoidal
+  time_encoding_method: linear
+  time_feat_dim: 1
   channel_embedding_dim: 50
   dropout: 0.1
-  scale_timediff: false
+  scale_timediff: true
 
 data:
   train_negative_sample_strategy: historical
