@@ -33,4 +33,4 @@ trainer:
 model:
   dropout: 0.3
   scale_timediff: true
-  linear: true
+  time_encoding_method: linear
