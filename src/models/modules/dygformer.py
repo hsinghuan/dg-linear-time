@@ -870,7 +870,7 @@ class TransformerEncoder(nn.Module):
             [nn.LayerNorm(attention_dim), nn.LayerNorm(attention_dim)]
         )
 
-    def forward(self, inputs: torch.Tensor):
+    def forward(self, inputs: torch.Tensor, get_attn_score: bool = False):
         """Encode the inputs by Transformer encoder :param inputs: Tensor, shape (batch_size,
         num_patches, self.attention_dim) :return:"""
         # note that the MultiheadAttention module accept input data with shape (seq_length, batch_size, input_dim), so we need to transpose the input
@@ -879,9 +879,14 @@ class TransformerEncoder(nn.Module):
         # Tensor, shape (batch_size, num_patches, self.attention_dim)
         transposed_inputs = self.norm_layers[0](transposed_inputs)
         # Tensor, shape (batch_size, num_patches, self.attention_dim)
-        hidden_states = self.multi_head_attention(
+        hidden_states, attn_scores = self.multi_head_attention(
             query=transposed_inputs, key=transposed_inputs, value=transposed_inputs
-        )[0].transpose(0, 1)
+        )
+        hidden_states = hidden_states.transpose(0, 1)
+        # hidden_states = self.multi_head_attention(
+        #     query=transposed_inputs, key=transposed_inputs, value=transposed_inputs
+        # )[0].transpose(0, 1)
+
         # Tensor, shape (batch_size, num_patches, self.attention_dim)
         outputs = inputs + self.dropout(hidden_states)
         # Tensor, shape (batch_size, num_patches, self.attention_dim)
@@ -890,4 +895,7 @@ class TransformerEncoder(nn.Module):
         )
         # Tensor, shape (batch_size, num_patches, self.attention_dim)
         outputs = outputs + self.dropout(hidden_states)
-        return outputs
+        if get_attn_score:
+            return outputs, attn_scores
+        else:
+            return outputs

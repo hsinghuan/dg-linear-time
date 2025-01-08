@@ -1211,21 +1211,14 @@ class TransformerDecoder(nn.Module):
             [nn.LayerNorm(attention_dim), nn.LayerNorm(attention_dim)]
         )
 
-    def forward(self, inputs: torch.Tensor):
+    def forward(self, inputs: torch.Tensor, get_attn_score: bool = False):
         """Process the inputs by Transformer decoder :param inputs: Tensor, shape (batch_size,
         num_patches, self.attention_dim) :return:"""
         # note that the MultiheadAttention module accept input data with shape (seq_length, batch_size, input_dim), so we need to transpose the input
         # Tensor, shape (num_patches, batch_size, self.attention_dim)
         transposed_inputs = inputs.transpose(0, 1)
         # Tensor, shape (num_patches, batch_size, self.attention_dim)
-        # print(f"transposed_inputs has nan? {torch.isnan(transposed_inputs).any()}")
-        # print(transposed_inputs)
         transposed_inputs_post_norm = self.norm_layers[0](transposed_inputs)
-        # print(f"transposed_inputs after norm has nan? {torch.isnan(transposed_inputs_post_norm).any()}")
-        # if torch.isnan(transposed_inputs_post_norm).any():
-        #     print(f"before transpose: {transposed_inputs}")
-        #     print(f"after transpose: {transposed_inputs_post_norm}")
-        # print(transposed_inputs)
         # we create a mask to make the query token attend to only the previous tokens
         mask = torch.triu(
             torch.full(
@@ -1237,17 +1230,19 @@ class TransformerDecoder(nn.Module):
             diagonal=1,
         )
         # Tensor, shape (batch_size, num_patches, self.attention_dim)
-        hidden_states = self.multi_head_attention(
+        hidden_states, attn_scores = self.multi_head_attention(
             query=transposed_inputs_post_norm,
             key=transposed_inputs_post_norm,
             value=transposed_inputs_post_norm,
             attn_mask=mask,
-        )[0].transpose(0, 1)
-        # print(f"hidden_states has nan? {torch.isnan(hidden_states).any()}")
-        # hidden_states, attn_weights = self.multi_head_attention(
-        #     query=transposed_inputs, key=transposed_inputs, value=transposed_inputs, attn_mask=mask
-        # )
-        # hidden_states = hidden_states.transpose(0, 1)
+        )
+        hidden_states = hidden_states.transpose(0, 1)
+        # hidden_states = self.multi_head_attention(
+        #     query=transposed_inputs_post_norm,
+        #     key=transposed_inputs_post_norm,
+        #     value=transposed_inputs_post_norm,
+        #     attn_mask=mask,
+        # )[0].transpose(0, 1)
 
         # Tensor, shape (batch_size, num_patches, self.attention_dim)
         outputs = inputs + self.dropout(hidden_states)
@@ -1257,7 +1252,11 @@ class TransformerDecoder(nn.Module):
         )
         # Tensor, shape (batch_size, num_patches, self.attention_dim)
         outputs = outputs + self.dropout(hidden_states)
-        return outputs
+
+        if get_attn_score:
+            return outputs, attn_scores
+        else:
+            return outputs
 
 
 class SelfCrossAttention(nn.Module):
