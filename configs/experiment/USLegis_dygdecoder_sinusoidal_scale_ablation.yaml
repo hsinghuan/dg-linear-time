@@ -37,4 +37,4 @@ model:
   time_encoding_method: sinusoidal
   scale_timediff: true
   channel_embedding_dim: 50
-  dropout: 0.3
+  dropout: 0.1

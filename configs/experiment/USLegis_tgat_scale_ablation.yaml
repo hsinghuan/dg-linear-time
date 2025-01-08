@@ -31,5 +31,5 @@ trainer:
   num_sanity_val_steps: 0
 
 model:
-  dropout: 0.5
+  dropout: 0.1
   scale_timediff: true

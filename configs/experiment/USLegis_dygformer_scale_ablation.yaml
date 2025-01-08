@@ -34,4 +34,5 @@ model:
   max_input_sequence_length: 256
   patch_size: 8
   scale_timediff: true
-  dropout: 0.0
+  channel_embedding_dim: 50
+  dropout: 0.3

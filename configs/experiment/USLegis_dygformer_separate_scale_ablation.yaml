@@ -36,4 +36,4 @@ model:
   embed_method: separate
   scale_timediff: true
   channel_embedding_dim: 30
-  dropout: 0.1
+  dropout: 0.5
