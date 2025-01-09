@@ -1,0 +1,9 @@
+_target_: src.data.non_tgbl_datamodule.NonTGBLDataModule
+original_data_dir: ${paths.data_dir}original
+preprocessed_data_dir: ${paths.data_dir}preprocessed
+dataset_name: UNtrade
+batch_size: 200
+val_ratio: 0.15
+test_ratio: 0.15
+num_workers: 0
+pin_memory: False
