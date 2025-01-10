@@ -34,5 +34,6 @@ model:
   max_input_sequence_length: 256
   patch_size: 8
   time_encoding_method: linear
+  time_feat_dim: 1
   scale_timediff: true
   dropout: 0.0
