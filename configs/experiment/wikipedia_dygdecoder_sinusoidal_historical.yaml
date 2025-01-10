@@ -32,10 +32,10 @@ trainer:
 
 model:
   embed_method: separate
-  channel_embedding_dim: 50
-  dropout: 0.1
   time_encoding_method: sinusoidal
   scale_timediff: false
+  channel_embedding_dim: 50
+  dropout: 0.1
 
 data:
   train_negative_sample_strategy: historical

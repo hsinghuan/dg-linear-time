@@ -35,10 +35,10 @@ model:
   patch_size: 8
   embed_method: separate
   time_encoding_method: sinusoidal
-  channel_embedding_dim: 50
-  dropout: 0.3
   scale_timediff: false
   inter_event_time: false
+  channel_embedding_dim: 50
+  dropout: 0.3
 
 data:
   train_negative_sample_strategy: historical

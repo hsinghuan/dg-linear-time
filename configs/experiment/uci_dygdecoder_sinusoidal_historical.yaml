@@ -34,9 +34,9 @@ model:
   max_input_sequence_length: 32
   patch_size: 1
   time_encoding_method: sinusoidal
-  channel_embedding_dim: 50
-  dropout: 0.1
   scale_timediff: false
+  channel_embedding_dim: 50
+  dropout: 0.3
 
 data:
   train_negative_sample_strategy: historical

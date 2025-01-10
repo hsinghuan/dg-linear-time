@@ -35,9 +35,9 @@ model:
   patch_size: 1
   time_encoding_method: linear
   time_feat_dim: 1
+  scale_timediff: true
   channel_embedding_dim: 50
   dropout: 0.1
-  scale_timediff: true
 
 data:
   train_negative_sample_strategy: historical
