@@ -17,11 +17,11 @@ seed: 1
 
 callbacks:
   early_stopping:
-    monitor: val/random/ap
+    monitor: val/historical/ap
     mode: max
     patience: 20
   model_checkpoint:
-    monitor: val/random/ap
+    monitor: val/historical/ap
     mode: max
 
 trainer:
