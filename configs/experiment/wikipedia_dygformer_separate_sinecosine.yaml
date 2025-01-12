@@ -32,7 +32,7 @@ trainer:
 
 model:
   embed_method: separate
-  channel_embedding_dim: 30
-  dropout: 0.1
+  channel_embedding_dim: 50
+  dropout: 0.3
   scale_timediff: false
   time_encoding_method: sinecosine
