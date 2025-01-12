@@ -1,0 +1,39 @@
+# @package _global_
+
+defaults:
+  - override /data: uci
+  - override /model: tgat
+  - override /callbacks: default
+  - override /trainer: gpu
+
+logger:
+  wandb:
+    tags: ${tags}
+    group: uci-tgat-scale-ablation-historical
+
+tags: ["dev"]
+
+seed: 1
+
+callbacks:
+  early_stopping:
+    monitor: val/historical/ap
+    mode: max
+    patience: 20
+  model_checkpoint:
+    monitor: val/historical/ap
+    mode: max
+
+trainer:
+  min_epochs: 10
+  max_epochs: 100
+  devices: [1]
+  num_sanity_val_steps: 0
+
+model:
+  dropout: 0.1
+  scale_timediff: true
+
+data:
+  train_negative_sample_strategy: historical
+  eval_negative_sample_strategy: historical
