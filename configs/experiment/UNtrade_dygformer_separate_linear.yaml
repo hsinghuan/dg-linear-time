@@ -1,15 +1,15 @@
 # @package _global_
 
 defaults:
-  - override /data: enron
-  - override /model: dygdecoder
+  - override /data: UNtrade
+  - override /model: dygformer
   - override /callbacks: default
   - override /trainer: gpu
 
 logger:
   wandb:
     tags: ${tags}
-    group: enron-dygdecoder-sinusoidal-historical
+    group: UNtrade-dygformer-separate-linear
 
 tags: ["dev"]
 
@@ -17,11 +17,11 @@ seed: 1
 
 callbacks:
   early_stopping:
-    monitor: val/historical/ap
+    monitor: val/random/ap
     mode: max
     patience: 20
   model_checkpoint:
-    monitor: val/historical/ap
+    monitor: val/random/ap
     mode: max
 
 trainer:
@@ -34,12 +34,7 @@ model:
   max_input_sequence_length: 256
   patch_size: 8
   embed_method: separate
-  time_encoding_method: sinusoidal
-  scale_timediff: false
-  inter_event_time: false
-  channel_embedding_dim: 50
-  dropout: 0.3
-
-data:
-  train_negative_sample_strategy: historical
-  eval_negative_sample_strategy: historical
+  time_encoding_method: linear
+  time_feat_dim: 1
+  scale_timediff: true
+  dropout: 0.0

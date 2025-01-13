@@ -9,7 +9,7 @@ defaults:
 logger:
   wandb:
     tags: ${tags}
-    group: wikipedia-tgat-sinecosine
+    group: wikipedia-tgat-scale-ablation
 
 tags: ["dev"]
 
@@ -31,6 +31,5 @@ trainer:
   num_sanity_val_steps: 0
 
 model:
-  scale_timediff: false
-  time_encoding_method: sinecosine
-  dropout: 0.3
+  scale_timediff: true
+  dropout: 0.1

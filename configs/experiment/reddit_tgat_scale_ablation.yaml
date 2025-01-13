@@ -2,14 +2,14 @@
 
 defaults:
   - override /data: reddit
-  - override /model: dygformer
+  - override /model: tgat
   - override /callbacks: default
   - override /trainer: gpu
 
 logger:
   wandb:
     tags: ${tags}
-    group: reddit-dygformer-historical
+    group: reddit-tgat-scale-ablation
 
 tags: ["dev"]
 
@@ -17,11 +17,11 @@ seed: 1
 
 callbacks:
   early_stopping:
-    monitor: val/historical/ap
+    monitor: val/random/ap
     mode: max
     patience: 20
   model_checkpoint:
-    monitor: val/historical/ap
+    monitor: val/random/ap
     mode: max
 
 trainer:
@@ -31,12 +31,6 @@ trainer:
   num_sanity_val_steps: 0
 
 model:
-  max_input_sequence_length: 64
-  patch_size: 2
-  scale_timediff: false
-  channel_embedding_dim: 50
-  dropout: 0.3
-
-data:
-  train_negative_sample_strategy: historical
-  eval_negative_sample_strategy: historical
+  sample_neighbor_strategy: uniform
+  dropout: 0.1
+  scale_timediff: true

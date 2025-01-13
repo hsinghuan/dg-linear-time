@@ -9,7 +9,7 @@ defaults:
 logger:
   wandb:
     tags: ${tags}
-    group: enron-dygdecoder-sinusoidal-historical
+    group: enron-dygdecoder-sinusoidal-scale-ablation-historical
 
 tags: ["dev"]
 
@@ -35,10 +35,10 @@ model:
   patch_size: 8
   embed_method: separate
   time_encoding_method: sinusoidal
-  scale_timediff: false
-  inter_event_time: false
   channel_embedding_dim: 50
   dropout: 0.3
+  scale_timediff: true
+  inter_event_time: false
 
 data:
   train_negative_sample_strategy: historical

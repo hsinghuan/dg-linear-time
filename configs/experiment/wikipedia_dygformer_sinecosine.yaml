@@ -33,3 +33,5 @@ trainer:
 model:
   scale_timediff: false
   time_encoding_method: sinecosine
+  channel_embedding_dim: 30
+  dropout: 0.1

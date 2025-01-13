@@ -1,15 +1,15 @@
 # @package _global_
 
 defaults:
-  - override /data: enron
-  - override /model: dygdecoder
+  - override /data: wikipedia
+  - override /model: dygformer
   - override /callbacks: default
   - override /trainer: gpu
 
 logger:
   wandb:
     tags: ${tags}
-    group: enron-dygdecoder-sinusoidal-historical
+    group: wikipedia-dygformer-separate-scale-ablation-historical
 
 tags: ["dev"]
 
@@ -31,14 +31,10 @@ trainer:
   num_sanity_val_steps: 0
 
 model:
-  max_input_sequence_length: 256
-  patch_size: 8
   embed_method: separate
-  time_encoding_method: sinusoidal
-  scale_timediff: false
-  inter_event_time: false
   channel_embedding_dim: 50
-  dropout: 0.3
+  dropout: 0.1
+  scale_timediff: true
 
 data:
   train_negative_sample_strategy: historical
