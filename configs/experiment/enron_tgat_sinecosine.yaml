@@ -33,4 +33,4 @@ trainer:
 model:
   scale_timediff: false
   time_encoding_method: sinecosine
-  dropout: 0.1
+  dropout: 0.3

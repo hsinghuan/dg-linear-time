@@ -35,7 +35,7 @@ model:
   patch_size: 2
   embed_method: separate
   time_encoding_method: sinecosine
-  channel_embedding_dim: 50
-  dropout: 0.3
   scale_timediff: false
   inter_event_time: false
+  channel_embedding_dim: 30
+  dropout: 0.3
