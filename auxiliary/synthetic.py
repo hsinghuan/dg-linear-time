@@ -135,13 +135,13 @@ class DecayOscillateDataset(Dataset):
                 weighted_sum += (
                     np.exp(-w * (t_target - tm)) * np.cos(omega * (t_target - tm)) ** 2
                 ) * xm
-            print([t_target - tm for tm in ts])
-            print(
-                [
-                    (np.exp(-w * (t_target - tm)) * np.cos(omega * (t_target - tm)) ** 2)
-                    for tm in ts
-                ]
-            )
+            # print([t_target - tm for tm in ts])
+            # print(
+            #     [
+            #         (np.exp(-w * (t_target - tm)) * np.cos(omega * (t_target - tm)) ** 2)
+            #         for tm in ts
+            #     ]
+            # )
 
             weighted_sum += np.random.normal(scale=0.1)  # add Gaussian noise
             y = 1 if weighted_sum > 0 else 0
@@ -208,7 +208,7 @@ class SeqClsModel(nn.Module):
                 ]
             )
             if self.add_bos:
-                self.bos_embedding = self.bos_embedding = nn.Parameter(
+                self.bos_embedding = nn.Parameter(
                     torch.empty(1, attn_dim), requires_grad=True
                 )
                 nn.init.normal_(self.bos_embedding)
@@ -354,7 +354,13 @@ def experiment(args):
     """A single run of the experiment."""
     # create dataset and dataloaders
     device = get_device(args.device)
-    dataset = SyntheticDataset(N=args.N, M=args.M, w=args.w, lam=args.lam, seed=args.seed)
+    if args.dataset == "synthetic":
+        dataset = SyntheticDataset(N=args.N, M=args.M, w=args.w, lam=args.lam, seed=args.seed)
+    elif args.dataset == "decay_oscillate":
+        dataset = DecayOscillateDataset(N=args.N, M=args.M, w=args.w, omega=args.omega, lam=args.lam, seed=args.seed)
+    else:
+        raise ValueError(f"Invalid dataset: {args.dataset}")
+
     train_size = int(0.7 * len(dataset))
     val_size = int(0.15 * len(dataset))
     test_size = len(dataset) - train_size - val_size
@@ -449,9 +455,13 @@ if __name__ == "__main__":
     )
     argparser.add_argument("--w", type=float, default=0.003, help="exponential decay weight")
     argparser.add_argument("--lam", type=float, default=0.01, help=r"rate for Exp(\lambda)")
+    argparser.add_argument("--omega", type=float, default=0.02, help="frequency of oscillation")
     argparser.add_argument("--batch_size", type=int, default=32, help="batch size")
     argparser.add_argument(
         "--time_encoding_method", type=str, default="sinusoidal", help="time encoding method"
+    )
+    argparser.add_argument(
+        "--dataset", type=str, default="decay_oscillate", help="which dataset to use, synthetic or decay_oscillate"
     )
     argparser.add_argument("--time_feat_dim", type=int, default=2, help="time feature dimension")
     argparser.add_argument(
