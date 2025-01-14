@@ -35,4 +35,5 @@ model:
   patch_size: 8
   embed_method: separate
   time_encoding_method: sinusoidal
-  dropout: 0.0
+  channel_embedding_dim: 50
+  dropout: 0.3
