@@ -32,7 +32,7 @@ trainer:
 
 model:
   scale_timediff: true
-  dropout: 0.1
+  dropout: 0.5
 
 data:
   train_negative_sample_strategy: historical
