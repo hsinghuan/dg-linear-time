@@ -33,7 +33,8 @@ trainer:
 model:
   max_input_sequence_length: 256
   patch_size: 8
-  dropout: 0.0
+  channel_embedding_dim: 50
+  dropout: 0.1
 
 data:
   train_negative_sample_strategy: historical
