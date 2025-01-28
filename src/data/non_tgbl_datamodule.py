@@ -285,6 +285,8 @@ class NonTGBLDataModule(LightningDataModule):
                 ],
             )
         )
+        self.val_time = val_time
+        self.test_time = test_time
 
         src_node_ids = graph_df.u.values.astype(np.longlong)
         dst_node_ids = graph_df.i.values.astype(np.longlong)
