@@ -38,6 +38,7 @@ class DyGDecoderModule(LinkPredictor):
         embed_method: str = "separate",
         scale_timediff: bool = False,
         inter_event_time: bool = False,
+        analyze_attn_scores: bool = False,
     ):
         super().__init__(sample_neighbor_strategy=sample_neighbor_strategy)
         """Initialize DyGDecoder LightningModule."""
@@ -136,6 +137,18 @@ class DyGDecoderModule(LinkPredictor):
                 },
             },
         }
+        self.test_attn_scores_analysis = {
+            "pos": {
+                "src": {
+                    "t": [],
+                    "attn_scores": [],
+                },
+                "dst": {
+                    "t": [],
+                    "attn_scores": [],
+                },
+            }
+        }
 
     def setup(self, stage: str) -> None:
         """Build model dynamically at the beginning of fit (train + validate), validate, test, or
@@ -146,63 +159,6 @@ class DyGDecoderModule(LinkPredictor):
             if self.hparams.output_dim is not None
             else self.node_raw_features.shape[1]
         )
-
-        # if self.hparams.time_encoding_method in ["exponential", "linear"]:
-        #     node_ids = np.concatenate([self.train_data.src_node_ids, self.train_data.dst_node_ids])
-        #     node_interact_times = np.concatenate(
-        #         [self.train_data.node_interact_times, self.train_data.node_interact_times]
-        #     )
-        #     (
-        #         _,
-        #         _,
-        #         nodes_neighbor_times_list,
-        #     ) = self.train_neighbor_sampler.get_all_first_hop_neighbors(
-        #         node_ids=node_ids, node_interact_times=node_interact_times
-        #     )
-        #     if self.hparams.time_ablation:  # use target time - historical edge event time
-        #         avg_time_diffs_per_tgt_edge, _, _, _ = analyze_target_historical_event_time_diff(
-        #             nodes_neighbor_times_list,
-        #             node_interact_times,
-        #             self.hparams.max_input_sequence_length,
-        #         )
-        #         self.avg_time_diff = np.nanmean(avg_time_diffs_per_tgt_edge)
-        #         self.std_time_diff = np.nanstd(avg_time_diffs_per_tgt_edge)
-        #         self.median_time_diff = None
-        #     else:
-        #         (
-        #             self.avg_time_diff,
-        #             self.median_time_diff,
-        #             self.std_time_diff,
-        #         ) = analyze_inter_event_time(nodes_neighbor_times_list, node_interact_times)
-        #     if self.hparams.time_encoding_method == "linear":
-        #         assert self.hparams.time_feat_dim == 1
-        # else:
-        #     if self.hparams.scale_sinusoidal_input:
-        #         node_ids = np.concatenate(
-        #             [self.train_data.src_node_ids, self.train_data.dst_node_ids]
-        #         )
-        #         node_interact_times = np.concatenate(
-        #             [self.train_data.node_interact_times, self.train_data.node_interact_times]
-        #         )
-        #         (
-        #             _,
-        #             _,
-        #             nodes_neighbor_times_list,
-        #         ) = self.train_neighbor_sampler.get_all_first_hop_neighbors(
-        #             node_ids=node_ids, node_interact_times=node_interact_times
-        #         )
-        #         avg_time_diffs_per_tgt_edge, _, _, _ = analyze_target_historical_event_time_diff(
-        #             nodes_neighbor_times_list,
-        #             node_interact_times,
-        #             self.hparams.max_input_sequence_length,
-        #         )
-        #         self.avg_time_diff = np.nanmean(avg_time_diffs_per_tgt_edge)
-        #         self.std_time_diff = np.nanstd(avg_time_diffs_per_tgt_edge)
-        #         self.median_time_diff = None
-        #     else:
-        #         self.avg_time_diff = 0
-        #         self.median_time_diff = None
-        #         self.std_time_diff = 1
 
         if self.hparams.time_encoding_method == "linear":
             assert self.hparams.time_feat_dim == 1
@@ -458,7 +414,10 @@ class DyGDecoderModule(LinkPredictor):
                 batch_neg_src_node_ids = batch_src_node_ids
             batch_neg_node_interact_times = batch_node_interact_times
 
-        inference_kwargs = {"analyze_length": not self.fit}
+        inference_kwargs = {
+            "analyze_length": not self.fit,
+            "analyze_attn_scores": self.hparams.analyze_attn_scores,
+        }
         pred_out = self._pred_pos_neg_scores(
             pos_src=batch_src_node_ids,
             pos_dst=batch_dst_node_ids,
@@ -469,7 +428,9 @@ class DyGDecoderModule(LinkPredictor):
             edge_ids=batch_edge_ids,
             **inference_kwargs,
         )
-        if inference_kwargs["analyze_length"]:  # with length analysis
+        if (
+            inference_kwargs["analyze_length"] and inference_kwargs["analyze_attn_scores"]
+        ):  # with length analysis
             (
                 pos_scores,
                 neg_scores,
@@ -477,6 +438,24 @@ class DyGDecoderModule(LinkPredictor):
                 pos_dst_history_length_analysis,
                 neg_src_history_length_analysis,
                 neg_dst_history_length_analysis,
+                pos_src_attn_scores,
+                pos_dst_attn_scores,
+            ) = pred_out
+        elif inference_kwargs["analyze_length"]:
+            (
+                pos_scores,
+                neg_scores,
+                pos_src_history_length_analysis,
+                pos_dst_history_length_analysis,
+                neg_src_history_length_analysis,
+                neg_dst_history_length_analysis,
+            ) = pred_out
+        elif inference_kwargs["analyze_attn_scores"]:
+            (
+                pos_scores,
+                neg_scores,
+                pos_src_attn_scores,
+                pos_dst_attn_scores,
             ) = pred_out
         else:
             pos_scores, neg_scores = pred_out
@@ -589,6 +568,15 @@ class DyGDecoderModule(LinkPredictor):
                 self.test_history_length_analysis["neg"]["dst"]["num_temporal_neighbors"].append(
                     neg_dst_history_length_analysis["num_temporal_neighbors"]
                 )
+            if inference_kwargs["analyze_attn_scores"]:
+                self.test_attn_scores_analysis["pos"]["src"]["t"].append(pos_src_attn_scores["t"])
+                self.test_attn_scores_analysis["pos"]["src"]["attn_scores"].append(
+                    pos_src_attn_scores["attn_scores"]
+                )
+                self.test_attn_scores_analysis["pos"]["dst"]["t"].append(pos_dst_attn_scores["t"])
+                self.test_attn_scores_analysis["pos"]["dst"]["attn_scores"].append(
+                    pos_dst_attn_scores["attn_scores"]
+                )
 
         if self.dataset_type == "tgbl":
             for sample_idx in range(len(batch_src_node_ids)):
@@ -625,27 +613,67 @@ class DyGDecoderModule(LinkPredictor):
     ) -> torch.Tensor:
         """Predict the probabilities/scores of (pos_src[i], pos_dst[i]) happening at time pos_t[i]
         and (neg_src[i], neg_dst[i]) happening at time neg_t[i]."""
-        pos_pred_out = self._pred_scores(pos_src, pos_dst, pos_t, **kwargs)
         analyze_length = "analyze_length" in kwargs and kwargs["analyze_length"]
-        if analyze_length:  # with length analysis
+        analyze_attn_scores = "analyze_attn_scores" in kwargs and kwargs["analyze_attn_scores"]
+        pos_pred_out = self._pred_scores(pos_src, pos_dst, pos_t, **kwargs)
+        if analyze_length and analyze_attn_scores:
+            (
+                pos_scores,
+                pos_src_history_length_analysis,
+                pos_dst_history_length_analysis,
+                pos_src_attn_scores,
+                pos_dst_attn_scores,
+            ) = pos_pred_out
+        elif analyze_length:  # with length analysis
             (
                 pos_scores,
                 pos_src_history_length_analysis,
                 pos_dst_history_length_analysis,
             ) = pos_pred_out
+        elif analyze_attn_scores:  # with attention score analysis
+            (
+                pos_scores,
+                pos_src_attn_scores,
+                pos_dst_attn_scores,
+            ) = pos_pred_out
         else:
             pos_scores = pos_pred_out
         neg_pred_out = self._pred_scores(neg_src, neg_dst, neg_t, **kwargs)
-        if analyze_length:  # with length analysis
+        if analyze_length and analyze_attn_scores:
+            (
+                neg_scores,
+                neg_src_history_length_analysis,
+                neg_dst_history_length_analysis,
+                _,
+                _,
+            ) = neg_pred_out
+        elif analyze_length:  # with length analysis
             (
                 neg_scores,
                 neg_src_history_length_analysis,
                 neg_dst_history_length_analysis,
             ) = neg_pred_out
+        elif analyze_attn_scores:  # with attention score analysis
+            (
+                neg_scores,
+                _,
+                _,
+            ) = neg_pred_out
         else:
             neg_scores = neg_pred_out
 
-        if analyze_length:
+        if analyze_length and analyze_attn_scores:
+            return (
+                pos_scores,
+                neg_scores,
+                pos_src_history_length_analysis,
+                pos_dst_history_length_analysis,
+                neg_src_history_length_analysis,
+                neg_dst_history_length_analysis,
+                pos_src_attn_scores,
+                pos_dst_attn_scores,
+            )
+        elif analyze_length:
             return (
                 pos_scores,
                 neg_scores,
@@ -654,6 +682,8 @@ class DyGDecoderModule(LinkPredictor):
                 neg_src_history_length_analysis,
                 neg_dst_history_length_analysis,
             )
+        elif analyze_attn_scores:
+            return pos_scores, neg_scores, pos_src_attn_scores, pos_dst_attn_scores
         else:
             return pos_scores, neg_scores
 
@@ -661,7 +691,36 @@ class DyGDecoderModule(LinkPredictor):
         self, src: np.ndarray, dst: np.ndarray, t: np.ndarray, **kwargs
     ) -> torch.Tensor:
         """Predict the probability/score of (src[i], dst[i]) happening at time t[i]."""
-        if "analyze_length" in kwargs and kwargs["analyze_length"]:
+        analyze_length = "analyze_length" in kwargs and kwargs["analyze_length"]
+        analyze_attn_scores = "analyze_attn_scores" in kwargs and kwargs["analyze_attn_scores"]
+        if analyze_length and analyze_attn_scores:
+            (
+                src_node_embeddings,
+                dst_node_embeddings,
+                src_history_length_analysis,
+                dst_history_length_analysis,
+                src_attn_scores,
+                dst_attn_scores,
+            ) = self.model[0].compute_src_dst_node_temporal_embeddings(
+                src_node_ids=src,
+                dst_node_ids=dst,
+                node_interact_times=t,
+                analyze_length=True,
+                analyze_attn_scores=True,
+            )
+            scores = (
+                self.model[1](input_1=src_node_embeddings, input_2=dst_node_embeddings)
+                .squeeze(dim=-1)
+                .sigmoid()
+            )
+            return (
+                scores,
+                src_history_length_analysis,
+                dst_history_length_analysis,
+                src_attn_scores,
+                dst_attn_scores,
+            )
+        elif analyze_length:
             (
                 src_node_embeddings,
                 dst_node_embeddings,
@@ -676,6 +735,21 @@ class DyGDecoderModule(LinkPredictor):
                 .sigmoid()
             )
             return scores, src_history_length_analysis, dst_history_length_analysis
+        elif analyze_attn_scores:  # with attention score analysis
+            (
+                src_node_embeddings,
+                dst_node_embeddings,
+                src_attn_scores,
+                dst_attn_scores,
+            ) = self.model[0].compute_src_dst_node_temporal_embeddings(
+                src_node_ids=src, dst_node_ids=dst, node_interact_times=t, analyze_attn_scores=True
+            )
+            scores = (
+                self.model[1](input_1=src_node_embeddings, input_2=dst_node_embeddings)
+                .squeeze(dim=-1)
+                .sigmoid()
+            )
+            return scores, src_attn_scores, dst_attn_scores
         else:
             src_node_embeddings, dst_node_embeddings = self.model[
                 0
@@ -811,6 +885,8 @@ class DyGDecoderModule(LinkPredictor):
             self.test_perf_list,
             analyze_length=analyze_length,
             length_analysis=self.test_history_length_analysis,
+            analyze_attn_scores=self.hparams.analyze_attn_scores,
+            attn_scores_analysis=self.test_attn_scores_analysis,
         )
         self.test_pos_scores = []
         self.test_neg_scores = []
@@ -846,6 +922,19 @@ class DyGDecoderModule(LinkPredictor):
                     },
                 },
             }
+        if self.hparams.analyze_attn_scores:
+            self.test_attn_scores_analysis = {
+                "pos": {
+                    "src": {
+                        "t": [],
+                        "attn_scores": [],
+                    },
+                    "dst": {
+                        "t": [],
+                        "attn_scores": [],
+                    },
+                }
+            }
 
     def _aggregate_eval_log(
         self,
@@ -855,6 +944,8 @@ class DyGDecoderModule(LinkPredictor):
         perf_list: List[float] = None,
         analyze_length: bool = False,
         length_analysis: Dict[str, Dict[str, Dict[str, List[float]]]] = None,
+        analyze_attn_scores: bool = False,
+        attn_scores_analysis: Dict[str, Dict[str, Dict[str, List[float]]]] = None,
     ) -> None:
         """Aggregate and log the evaluation performance.
 
@@ -915,69 +1006,6 @@ class DyGDecoderModule(LinkPredictor):
                 on_step=False,
                 on_epoch=True,
             )
-
-        # # finer grained aggregation (aggregate to 4 bins) at trainer.validation() or trainer.test() stages
-        # if not self.fit:
-        #     pos_scores_num = len(pos_scores)
-        #     neg_scores_num = len(neg_scores)
-        #     for i in range(4):
-        #         if i != 3:
-        #             pos_scores_per_quarter = pos_scores[
-        #                 i * pos_scores_num // 4 : (i + 1) * pos_scores_num // 4
-        #             ]
-        #             neg_scores_per_quarter = neg_scores[
-        #                 i * neg_scores_num // 4 : (i + 1) * neg_scores_num // 4
-        #             ]
-        #         else:
-        #             pos_scores_per_quarter = pos_scores[i * pos_scores_num // 4 :]
-        #             neg_scores_per_quarter = neg_scores[i * neg_scores_num // 4 :]
-        #         scores_per_quarter = torch.cat(
-        #             (pos_scores_per_quarter, neg_scores_per_quarter), dim=0
-        #         )
-        #         labels_per_quarter = torch.cat(
-        #             (
-        #                 torch.ones_like(pos_scores_per_quarter),
-        #                 torch.zeros_like(neg_scores_per_quarter),
-        #             ),
-        #             dim=0,
-        #         )
-        #         self.log(
-        #             ap_log_name + f"_quarter_{i+1}",
-        #             average_precision_score(
-        #                 y_true=labels_per_quarter.cpu().numpy(),
-        #                 y_score=scores_per_quarter.cpu().numpy(),
-        #             ),
-        #             on_step=False,
-        #             on_epoch=True,
-        #             prog_bar=progress_bar,
-        #         )
-        #         self.log(
-        #             auc_log_name + f"_quarter_{i+1}",
-        #             roc_auc_score(
-        #                 y_true=labels_per_quarter.cpu().numpy(),
-        #                 y_score=scores_per_quarter.cpu().numpy(),
-        #             ),
-        #             on_step=False,
-        #             on_epoch=True,
-        #             prog_bar=progress_bar,
-        #         )
-
-        #     if perf_list is not None:
-        #         perf_list_num = len(perf_list)
-        #         for i in range(4):
-        #             if i != 3:
-        #                 perf_list_per_quarter = perf_list[
-        #                     i * perf_list_num // 4 : (i + 1) * perf_list_num // 4
-        #                 ]
-        #             else:
-        #                 perf_list_per_quarter = perf_list[i * perf_list_num // 4 :]
-        #             self.log(
-        #                 metric_log_name + f"_quarter_{i+1}",
-        #                 np.mean(perf_list_per_quarter),
-        #                 on_step=False,
-        #                 on_epoch=True,
-        #                 prog_bar=progress_bar,
-        #             )
 
         if analyze_length:
             length_analysis["pos"]["src"]["avg_time_diffs"] = np.concatenate(
@@ -1041,4 +1069,27 @@ class DyGDecoderModule(LinkPredictor):
                 torch.save(
                     length_analysis,
                     f"{checkpoint_dir}/{stage}_{self.eval_negative_sample_strategy}_length_analysis.pt",
+                )
+
+        if analyze_attn_scores:
+            attn_scores_analysis["pos"]["src"]["t"] = torch.cat(
+                attn_scores_analysis["pos"]["src"]["t"], dim=0
+            )
+            attn_scores_analysis["pos"]["src"]["attn_scores"] = torch.cat(
+                attn_scores_analysis["pos"]["src"]["attn_scores"], dim=0
+            )
+
+            attn_scores_analysis["pos"]["dst"]["t"] = torch.cat(
+                attn_scores_analysis["pos"]["dst"]["t"], dim=0
+            )
+            attn_scores_analysis["pos"]["dst"]["attn_scores"] = torch.cat(
+                attn_scores_analysis["pos"]["dst"]["attn_scores"], dim=0
+            )
+            checkpoint_dir = self.trainer.checkpoint_callback.dirpath
+            if checkpoint_dir is not None:
+                if not os.path.exists(checkpoint_dir):
+                    os.makedirs(checkpoint_dir)
+                torch.save(
+                    attn_scores_analysis,
+                    f"{checkpoint_dir}/{stage}_{self.eval_negative_sample_strategy}_attn_scores_analysis.pt",
                 )

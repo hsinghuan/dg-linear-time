@@ -34,6 +34,7 @@ class DyGFormer(nn.Module):
         time_encoding_method: str = "sinusoidal",
         avg_time_diff: float = None,
         std_time_diff: float = None,
+        time_channel_embedding_dim: int = None,
         device: str = "cpu",
     ):
         """
@@ -88,6 +89,11 @@ class DyGFormer(nn.Module):
             device=self.device,
         )
 
+        if time_channel_embedding_dim is not None:
+            self.time_channel_embedding_dim = time_channel_embedding_dim
+        else:
+            self.time_channel_embedding_dim = channel_embedding_dim
+
         self.projection_layer = nn.ModuleDict(
             {
                 "node": nn.Linear(
@@ -102,7 +108,7 @@ class DyGFormer(nn.Module):
                 ),
                 "time": nn.Linear(
                     in_features=self.patch_size * self.time_feat_dim,
-                    out_features=self.channel_embedding_dim,
+                    out_features=self.time_channel_embedding_dim,  # self.channel_embedding_dim, # exp
                     bias=True,
                 ),
                 "neighbor_co_occurrence": nn.Linear(
@@ -114,11 +120,14 @@ class DyGFormer(nn.Module):
         )
 
         self.num_channels = 4
+        attention_dim = (
+            self.num_channels - 1
+        ) * self.channel_embedding_dim + self.time_channel_embedding_dim
 
         self.transformers = nn.ModuleList(
             [
                 TransformerEncoder(
-                    attention_dim=self.num_channels * self.channel_embedding_dim,
+                    attention_dim=attention_dim,  # self.num_channels * self.channel_embedding_dim, #
                     num_heads=self.num_heads,
                     dropout=self.dropout,
                 )
@@ -127,7 +136,7 @@ class DyGFormer(nn.Module):
         )
 
         self.output_layer = nn.Linear(
-            in_features=self.num_channels * self.channel_embedding_dim,
+            in_features=attention_dim,  # self.num_channels * self.channel_embedding_dim, #
             out_features=self.output_dim,
             bias=True,
         )
@@ -138,6 +147,7 @@ class DyGFormer(nn.Module):
         dst_node_ids: np.ndarray,
         node_interact_times: np.ndarray,
         analyze_length: bool = False,
+        analyze_attn_scores: bool = False,
     ):
         """Compute source and destination node temporal embeddings :param src_node_ids: ndarray,
         shape (batch_size, ) :param dst_node_ids: ndarray, shape (batch_size, ) :param
@@ -270,38 +280,73 @@ class DyGFormer(nn.Module):
             time_encoder=self.time_encoder,
         )
 
-        # get the patches for source and destination nodes
-        # src_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * node_feat_dim)
-        # src_patches_nodes_edge_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * edge_feat_dim)
-        # src_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, src_num_patches, patch_size * time_feat_dim)
-        (
-            src_patches_nodes_neighbor_node_raw_features,
-            src_patches_nodes_edge_raw_features,
-            src_patches_nodes_neighbor_time_features,
-            src_patches_nodes_neighbor_co_occurrence_features,
-        ) = self.get_patches(
-            padded_nodes_neighbor_node_raw_features=src_padded_nodes_neighbor_node_raw_features,
-            padded_nodes_edge_raw_features=src_padded_nodes_edge_raw_features,
-            padded_nodes_neighbor_time_features=src_padded_nodes_neighbor_time_features,
-            padded_nodes_neighbor_co_occurrence_features=src_padded_nodes_neighbor_co_occurrence_features,
-            patch_size=self.patch_size,
-        )
+        if analyze_attn_scores:
+            (
+                src_patches_nodes_neighbor_node_raw_features,
+                src_patches_nodes_edge_raw_features,
+                src_patches_nodes_neighbor_time_features,
+                src_patches_nodes_neighbor_co_occurrence_features,
+                src_patches_nodes_neighbor_times,
+            ) = self.get_patches(
+                padded_nodes_neighbor_node_raw_features=src_padded_nodes_neighbor_node_raw_features,
+                padded_nodes_edge_raw_features=src_padded_nodes_edge_raw_features,
+                padded_nodes_neighbor_time_features=src_padded_nodes_neighbor_time_features,
+                padded_nodes_neighbor_co_occurrence_features=src_padded_nodes_neighbor_co_occurrence_features,
+                patch_size=self.patch_size,
+                padded_nodes_neighbor_times=torch.from_numpy(src_padded_nodes_neighbor_times).to(
+                    self.device
+                ),
+            )
 
-        # dst_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * node_feat_dim)
-        # dst_patches_nodes_edge_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * edge_feat_dim)
-        # dst_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, dst_num_patches, patch_size * time_feat_dim)
-        (
-            dst_patches_nodes_neighbor_node_raw_features,
-            dst_patches_nodes_edge_raw_features,
-            dst_patches_nodes_neighbor_time_features,
-            dst_patches_nodes_neighbor_co_occurrence_features,
-        ) = self.get_patches(
-            padded_nodes_neighbor_node_raw_features=dst_padded_nodes_neighbor_node_raw_features,
-            padded_nodes_edge_raw_features=dst_padded_nodes_edge_raw_features,
-            padded_nodes_neighbor_time_features=dst_padded_nodes_neighbor_time_features,
-            padded_nodes_neighbor_co_occurrence_features=dst_padded_nodes_neighbor_co_occurrence_features,
-            patch_size=self.patch_size,
-        )
+            (
+                dst_patches_nodes_neighbor_node_raw_features,
+                dst_patches_nodes_edge_raw_features,
+                dst_patches_nodes_neighbor_time_features,
+                dst_patches_nodes_neighbor_co_occurrence_features,
+                dst_patches_nodes_neighbor_times,
+            ) = self.get_patches(
+                padded_nodes_neighbor_node_raw_features=dst_padded_nodes_neighbor_node_raw_features,
+                padded_nodes_edge_raw_features=dst_padded_nodes_edge_raw_features,
+                padded_nodes_neighbor_time_features=dst_padded_nodes_neighbor_time_features,
+                padded_nodes_neighbor_co_occurrence_features=dst_padded_nodes_neighbor_co_occurrence_features,
+                patch_size=self.patch_size,
+                padded_nodes_neighbor_times=torch.from_numpy(dst_padded_nodes_neighbor_times).to(
+                    self.device
+                ),
+            )
+        else:
+            # get the patches for source and destination nodes
+            # src_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * node_feat_dim)
+            # src_patches_nodes_edge_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * edge_feat_dim)
+            # src_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, src_num_patches, patch_size * time_feat_dim)
+            (
+                src_patches_nodes_neighbor_node_raw_features,
+                src_patches_nodes_edge_raw_features,
+                src_patches_nodes_neighbor_time_features,
+                src_patches_nodes_neighbor_co_occurrence_features,
+            ) = self.get_patches(
+                padded_nodes_neighbor_node_raw_features=src_padded_nodes_neighbor_node_raw_features,
+                padded_nodes_edge_raw_features=src_padded_nodes_edge_raw_features,
+                padded_nodes_neighbor_time_features=src_padded_nodes_neighbor_time_features,
+                padded_nodes_neighbor_co_occurrence_features=src_padded_nodes_neighbor_co_occurrence_features,
+                patch_size=self.patch_size,
+            )
+
+            # dst_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * node_feat_dim)
+            # dst_patches_nodes_edge_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * edge_feat_dim)
+            # dst_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, dst_num_patches, patch_size * time_feat_dim)
+            (
+                dst_patches_nodes_neighbor_node_raw_features,
+                dst_patches_nodes_edge_raw_features,
+                dst_patches_nodes_neighbor_time_features,
+                dst_patches_nodes_neighbor_co_occurrence_features,
+            ) = self.get_patches(
+                padded_nodes_neighbor_node_raw_features=dst_padded_nodes_neighbor_node_raw_features,
+                padded_nodes_edge_raw_features=dst_padded_nodes_edge_raw_features,
+                padded_nodes_neighbor_time_features=dst_padded_nodes_neighbor_time_features,
+                padded_nodes_neighbor_co_occurrence_features=dst_padded_nodes_neighbor_co_occurrence_features,
+                patch_size=self.patch_size,
+            )
 
         # align the patch encoding dimension
         # Tensor, shape (batch_size, src_num_patches, channel_embedding_dim)
@@ -363,20 +408,46 @@ class DyGFormer(nn.Module):
                 dim=1,
             )
 
-            patches_data = [
-                patches_nodes_neighbor_node_raw_features,
-                patches_nodes_edge_raw_features,
-                patches_nodes_neighbor_time_features,
-                patches_nodes_neighbor_co_occurrence_features,
-            ]
-            # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels, channel_embedding_dim)
-            patches_data = torch.stack(patches_data, dim=2)
-            # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels * channel_embedding_dim)
-            patches_data = patches_data.reshape(
-                batch_size,
-                src_num_patches + dst_num_patches,
-                self.num_channels * self.channel_embedding_dim,
-            )
+            if self.time_channel_embedding_dim == self.channel_embedding_dim:
+                # regular forward implementation
+                patches_data = [
+                    patches_nodes_neighbor_node_raw_features,
+                    patches_nodes_edge_raw_features,
+                    patches_nodes_neighbor_time_features,
+                    patches_nodes_neighbor_co_occurrence_features,
+                ]
+                # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels, channel_embedding_dim)
+                patches_data = torch.stack(patches_data, dim=2)
+                # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels * channel_embedding_dim)
+                patches_data = patches_data.reshape(
+                    batch_size,
+                    src_num_patches + dst_num_patches,
+                    self.num_channels * self.channel_embedding_dim,
+                )
+            else:
+                # special implementation to adapt to different time channel embedding dim
+                patches_nodes_neighbor_node_raw_features.reshape(
+                    batch_size, src_num_patches + dst_num_patches, self.channel_embedding_dim
+                )
+                patches_nodes_edge_raw_features.reshape(
+                    batch_size, src_num_patches + dst_num_patches, self.channel_embedding_dim
+                )
+                patches_nodes_neighbor_time_features.reshape(
+                    batch_size, src_num_patches + dst_num_patches, self.time_channel_embedding_dim
+                )
+                patches_nodes_neighbor_co_occurrence_features.reshape(
+                    batch_size, src_num_patches + dst_num_patches, self.channel_embedding_dim
+                )
+                patches_data = torch.cat(
+                    [
+                        patches_nodes_neighbor_node_raw_features,
+                        patches_nodes_edge_raw_features,
+                        patches_nodes_neighbor_time_features,
+                        patches_nodes_neighbor_co_occurrence_features,
+                    ],
+                    dim=-1,
+                )  # (batch_size, src_num_patches + dst_num_patches, (num_channels - 1) * channel_embedding_dim + time_channel_embedding_dim)
+
             # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels * channel_embedding_dim)
             for transformer in self.transformers:
                 patches_data = transformer(patches_data)
@@ -427,12 +498,29 @@ class DyGFormer(nn.Module):
                 dst_num_patches,
                 self.num_channels * self.channel_embedding_dim,
             )
-            # Tensor, shape (batch_size, src_num_patches, num_channels * channel_embedding_dim)
-            for transformer in self.transformers:
-                src_patches_data = transformer(src_patches_data)
-            # Tensor, shape (batch_size, dst_num_patches, num_channels * channel_embedding_dim)
-            for transformer in self.transformers:
-                dst_patches_data = transformer(dst_patches_data)
+            if analyze_attn_scores:
+                for transformer in self.transformers:
+                    src_patches_data, src_attn_scores = transformer(
+                        src_patches_data, get_attn_score=True
+                    )
+                    dst_patches_data, dst_attn_scores = transformer(
+                        dst_patches_data, get_attn_score=True
+                    )
+                src_attn_scores_analysis = {
+                    "t": src_patches_nodes_neighbor_times,
+                    "attn_scores": src_attn_scores,
+                }
+                dst_attn_scores_analysis = {
+                    "t": dst_patches_nodes_neighbor_times,
+                    "attn_scores": dst_attn_scores,
+                }
+            else:
+                # Tensor, shape (batch_size, src_num_patches, num_channels * channel_embedding_dim)
+                for transformer in self.transformers:
+                    src_patches_data = transformer(src_patches_data)
+                # Tensor, shape (batch_size, dst_num_patches, num_channels * channel_embedding_dim)
+                for transformer in self.transformers:
+                    dst_patches_data = transformer(dst_patches_data)
 
             # src_patches_data, Tensor, shape (batch_size, num_channels * channel_embedding_dim)
             src_patches_data = torch.mean(src_patches_data, dim=1)
@@ -444,12 +532,28 @@ class DyGFormer(nn.Module):
             # Tensor, shape (batch_size, output_dim)
             dst_node_embeddings = self.output_layer(dst_patches_data)
 
-        if analyze_length:
+        if analyze_length and analyze_attn_scores:
             return (
                 src_node_embeddings,
                 dst_node_embeddings,
                 src_history_length_analysis,
                 dst_history_length_analysis,
+                src_attn_scores_analysis,
+                dst_attn_scores_analysis,
+            )
+        elif analyze_length:
+            return (
+                src_node_embeddings,
+                dst_node_embeddings,
+                src_history_length_analysis,
+                dst_history_length_analysis,
+            )
+        elif analyze_attn_scores:
+            return (
+                src_node_embeddings,
+                dst_node_embeddings,
+                src_attn_scores_analysis,
+                dst_attn_scores_analysis,
             )
         else:
             return src_node_embeddings, dst_node_embeddings
@@ -575,6 +679,7 @@ class DyGFormer(nn.Module):
         padded_nodes_neighbor_time_features: torch.Tensor,
         padded_nodes_neighbor_co_occurrence_features: torch.Tensor = None,
         patch_size: int = 1,
+        padded_nodes_neighbor_times: torch.Tensor = None,
     ):
         """Get the sequence of patches for nodes :param padded_nodes_neighbor_node_raw_features:
 
@@ -594,7 +699,8 @@ class DyGFormer(nn.Module):
             patches_nodes_edge_raw_features,
             patches_nodes_neighbor_time_features,
             patches_nodes_neighbor_co_occurrence_features,
-        ) = ([], [], [], [])
+            patches_nodes_neighbor_times,
+        ) = ([], [], [], [], [])
 
         for patch_id in range(num_patches):
             start_idx = patch_id * patch_size
@@ -611,6 +717,10 @@ class DyGFormer(nn.Module):
             patches_nodes_neighbor_co_occurrence_features.append(
                 padded_nodes_neighbor_co_occurrence_features[:, start_idx:end_idx, :]
             )
+            if padded_nodes_neighbor_times is not None:
+                patches_nodes_neighbor_times.append(
+                    padded_nodes_neighbor_times[:, start_idx:end_idx]
+                )
 
         batch_size = len(padded_nodes_neighbor_node_raw_features)
         # Tensor, shape (batch_size, num_patches, patch_size * node_feat_dim)
@@ -629,6 +739,21 @@ class DyGFormer(nn.Module):
         patches_nodes_neighbor_co_occurrence_features = torch.stack(
             patches_nodes_neighbor_co_occurrence_features, dim=1
         ).reshape(batch_size, num_patches, patch_size * self.neighbor_co_occurrence_feat_dim)
+
+        if padded_nodes_neighbor_times is not None:
+            patches_nodes_neighbor_times = (
+                torch.stack(patches_nodes_neighbor_times, dim=1)
+                .reshape(batch_size, num_patches, patch_size)
+                .max(dim=-1)[0]  # TODO: try .mean()
+            )
+            return (
+                patches_nodes_neighbor_node_raw_features,
+                patches_nodes_edge_raw_features,
+                patches_nodes_neighbor_time_features,
+                patches_nodes_neighbor_co_occurrence_features,
+                patches_nodes_neighbor_times,
+            )
+
         return (
             patches_nodes_neighbor_node_raw_features,
             patches_nodes_edge_raw_features,

@@ -173,6 +173,7 @@ class DyGDecoder(nn.Module):
         dst_node_ids: np.ndarray,
         node_interact_times: np.ndarray,
         analyze_length: bool = False,
+        analyze_attn_scores: bool = False,
     ):
         """Compute source and destination node temporal embeddings :param src_node_ids: ndarray,
         shape (batch_size, ) :param dst_node_ids: ndarray, shape (batch_size, ) :param
@@ -308,38 +309,81 @@ class DyGDecoder(nn.Module):
                 time_encoder=self.time_encoder,
             )
 
-            # get the patches for source and destination nodes
-            # src_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * node_feat_dim)
-            # src_patches_nodes_edge_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * edge_feat_dim)
-            # src_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, src_num_patches, patch_size * time_feat_dim)
-            (
-                src_patches_nodes_neighbor_node_raw_features,
-                src_patches_nodes_edge_raw_features,
-                src_patches_nodes_neighbor_time_features,
-                src_patches_nodes_neighbor_co_occurrence_features,
-            ) = self.get_patches(
-                padded_nodes_neighbor_node_raw_features=src_padded_nodes_neighbor_node_raw_features,
-                padded_nodes_edge_raw_features=src_padded_nodes_edge_raw_features,
-                padded_nodes_neighbor_time_features=src_padded_nodes_neighbor_time_features,
-                padded_nodes_neighbor_co_occurrence_features=src_padded_nodes_neighbor_co_occurrence_features,
-                patch_size=self.patch_size,
-            )
+            if analyze_attn_scores:
+                # get the patches for source and destination nodes
+                # src_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * node_feat_dim)
+                # src_patches_nodes_edge_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * edge_feat_dim)
+                # src_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, src_num_patches, patch_size * time_feat_dim)
+                (
+                    src_patches_nodes_neighbor_node_raw_features,
+                    src_patches_nodes_edge_raw_features,
+                    src_patches_nodes_neighbor_time_features,
+                    src_patches_nodes_neighbor_co_occurrence_features,
+                    src_patches_nodes_neighbor_times,
+                ) = self.get_patches(
+                    padded_nodes_neighbor_node_raw_features=src_padded_nodes_neighbor_node_raw_features,
+                    padded_nodes_edge_raw_features=src_padded_nodes_edge_raw_features,
+                    padded_nodes_neighbor_time_features=src_padded_nodes_neighbor_time_features,
+                    padded_nodes_neighbor_co_occurrence_features=src_padded_nodes_neighbor_co_occurrence_features,
+                    patch_size=self.patch_size,
+                    padded_nodes_neighbor_times=torch.from_numpy(
+                        src_padded_nodes_neighbor_times
+                    ).to(self.device),
+                )
 
-            # dst_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * node_feat_dim)
-            # dst_patches_nodes_edge_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * edge_feat_dim)
-            # dst_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, dst_num_patches, patch_size * time_feat_dim)
-            (
-                dst_patches_nodes_neighbor_node_raw_features,
-                dst_patches_nodes_edge_raw_features,
-                dst_patches_nodes_neighbor_time_features,
-                dst_patches_nodes_neighbor_co_occurrence_features,
-            ) = self.get_patches(
-                padded_nodes_neighbor_node_raw_features=dst_padded_nodes_neighbor_node_raw_features,
-                padded_nodes_edge_raw_features=dst_padded_nodes_edge_raw_features,
-                padded_nodes_neighbor_time_features=dst_padded_nodes_neighbor_time_features,
-                padded_nodes_neighbor_co_occurrence_features=dst_padded_nodes_neighbor_co_occurrence_features,
-                patch_size=self.patch_size,
-            )
+                # dst_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * node_feat_dim)
+                # dst_patches_nodes_edge_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * edge_feat_dim)
+                # dst_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, dst_num_patches, patch_size * time_feat_dim)
+                (
+                    dst_patches_nodes_neighbor_node_raw_features,
+                    dst_patches_nodes_edge_raw_features,
+                    dst_patches_nodes_neighbor_time_features,
+                    dst_patches_nodes_neighbor_co_occurrence_features,
+                    dst_patches_nodes_neighbor_times,
+                ) = self.get_patches(
+                    padded_nodes_neighbor_node_raw_features=dst_padded_nodes_neighbor_node_raw_features,
+                    padded_nodes_edge_raw_features=dst_padded_nodes_edge_raw_features,
+                    padded_nodes_neighbor_time_features=dst_padded_nodes_neighbor_time_features,
+                    padded_nodes_neighbor_co_occurrence_features=dst_padded_nodes_neighbor_co_occurrence_features,
+                    patch_size=self.patch_size,
+                    padded_nodes_neighbor_times=torch.from_numpy(
+                        dst_padded_nodes_neighbor_times
+                    ).to(self.device),
+                )
+
+            else:
+                # get the patches for source and destination nodes
+                # src_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * node_feat_dim)
+                # src_patches_nodes_edge_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * edge_feat_dim)
+                # src_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, src_num_patches, patch_size * time_feat_dim)
+                (
+                    src_patches_nodes_neighbor_node_raw_features,
+                    src_patches_nodes_edge_raw_features,
+                    src_patches_nodes_neighbor_time_features,
+                    src_patches_nodes_neighbor_co_occurrence_features,
+                ) = self.get_patches(
+                    padded_nodes_neighbor_node_raw_features=src_padded_nodes_neighbor_node_raw_features,
+                    padded_nodes_edge_raw_features=src_padded_nodes_edge_raw_features,
+                    padded_nodes_neighbor_time_features=src_padded_nodes_neighbor_time_features,
+                    padded_nodes_neighbor_co_occurrence_features=src_padded_nodes_neighbor_co_occurrence_features,
+                    patch_size=self.patch_size,
+                )
+
+                # dst_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * node_feat_dim)
+                # dst_patches_nodes_edge_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * edge_feat_dim)
+                # dst_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, dst_num_patches, patch_size * time_feat_dim)
+                (
+                    dst_patches_nodes_neighbor_node_raw_features,
+                    dst_patches_nodes_edge_raw_features,
+                    dst_patches_nodes_neighbor_time_features,
+                    dst_patches_nodes_neighbor_co_occurrence_features,
+                ) = self.get_patches(
+                    padded_nodes_neighbor_node_raw_features=dst_padded_nodes_neighbor_node_raw_features,
+                    padded_nodes_edge_raw_features=dst_padded_nodes_edge_raw_features,
+                    padded_nodes_neighbor_time_features=dst_padded_nodes_neighbor_time_features,
+                    padded_nodes_neighbor_co_occurrence_features=dst_padded_nodes_neighbor_co_occurrence_features,
+                    patch_size=self.patch_size,
+                )
 
             # align the patch encoding dimension
             # Tensor, shape (batch_size, src_num_patches, channel_embedding_dim)
@@ -415,6 +459,33 @@ class DyGDecoder(nn.Module):
                 patches_bos = self.bos_embedding.view(1, 1, -1).repeat(batch_size, 1, 1)
                 src_patches_data = torch.cat([patches_bos, src_patches_data], dim=1)
                 dst_patches_data = torch.cat([patches_bos, dst_patches_data], dim=1)
+                if analyze_attn_scores:
+                    min_timestamp = -1
+                    # (
+                    #     min(
+                    #         src_patches_nodes_neighbor_times[:, 0].min(),
+                    #         dst_patches_nodes_neighbor_times[:, 0].min(),
+                    #     )
+                    #     - 1.0
+                    # )
+                    src_patches_nodes_neighbor_times = torch.cat(
+                        [
+                            torch.full(
+                                size=(batch_size, 1), fill_value=min_timestamp, device=self.device
+                            ),
+                            src_patches_nodes_neighbor_times,
+                        ],
+                        dim=1,
+                    )
+                    dst_patches_nodes_neighbor_times = torch.cat(
+                        [
+                            torch.full(
+                                size=(batch_size, 1), fill_value=min_timestamp, device=self.device
+                            ),
+                            dst_patches_nodes_neighbor_times,
+                        ],
+                        dim=1,
+                    )
                 # make sure that we are indexing the right last token
                 offset = 1
             else:
@@ -423,9 +494,26 @@ class DyGDecoder(nn.Module):
             # print("src_patches_data:", src_patches_data.shape)
             # print("dst_patches_data", dst_patches_data.shape)
 
-            for transformer in self.transformers:
-                src_patches_data = transformer(src_patches_data)
-                dst_patches_data = transformer(dst_patches_data)
+            if analyze_attn_scores:
+                for transformer in self.transformers:
+                    src_patches_data, src_attn_scores = transformer(
+                        src_patches_data, get_attn_score=True
+                    )
+                    dst_patches_data, dst_attn_scores = transformer(
+                        dst_patches_data, get_attn_score=True
+                    )
+                src_attn_scores_analysis = {
+                    "t": src_patches_nodes_neighbor_times,
+                    "attn_scores": src_attn_scores,
+                }
+                dst_attn_scores_analysis = {
+                    "t": dst_patches_nodes_neighbor_times,
+                    "attn_scores": dst_attn_scores,
+                }
+            else:
+                for transformer in self.transformers:
+                    src_patches_data = transformer(src_patches_data)
+                    dst_patches_data = transformer(dst_patches_data)
 
             # find the patch containing the last non-padding token of src_patches_data and dst_patches_data
             def last_non_zero(arr1d):
@@ -824,12 +912,28 @@ class DyGDecoder(nn.Module):
         # if torch.isnan(dst_node_embeddings).any():
         #     print(dst_node_embeddings)
 
-        if analyze_length:
+        if analyze_length and analyze_attn_scores:
             return (
                 src_node_embeddings,
                 dst_node_embeddings,
                 src_history_length_analysis,
                 dst_history_length_analysis,
+                src_attn_scores_analysis,
+                dst_attn_scores_analysis,
+            )
+        elif analyze_length:
+            return (
+                src_node_embeddings,
+                dst_node_embeddings,
+                src_history_length_analysis,
+                dst_history_length_analysis,
+            )
+        elif analyze_attn_scores:
+            return (
+                src_node_embeddings,
+                dst_node_embeddings,
+                src_attn_scores_analysis,
+                dst_attn_scores_analysis,
             )
         else:
             return src_node_embeddings, dst_node_embeddings

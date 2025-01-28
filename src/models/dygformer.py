@@ -33,8 +33,9 @@ class DyGFormerModule(LinkPredictor):
         embed_method: str = "original",
         sample_neighbor_strategy: str = "recent",
         time_encoding_method: str = "sinusoidal",
-        # scale_sinusoidal_input: bool = False,
         scale_timediff: bool = False,
+        time_channel_embedding_dim: int = None,
+        analyze_attn_scores: bool = False,
     ):
         super().__init__(sample_neighbor_strategy=sample_neighbor_strategy)
         """Initialize DyGFormer LightningModule."""
@@ -133,6 +134,18 @@ class DyGFormerModule(LinkPredictor):
                 },
             },
         }
+        self.test_attn_scores_analysis = {
+            "pos": {
+                "src": {
+                    "t": [],
+                    "attn_scores": [],
+                },
+                "dst": {
+                    "t": [],
+                    "attn_scores": [],
+                },
+            }
+        }
 
     def setup(self, stage: str) -> None:
         """Build model dynamically at the beginning of fit (train + validate), validate, test, or
@@ -223,6 +236,7 @@ class DyGFormerModule(LinkPredictor):
             time_encoding_method=self.hparams.time_encoding_method,
             avg_time_diff=self.avg_time_diff,
             std_time_diff=self.std_time_diff,
+            time_channel_embedding_dim=self.hparams.time_channel_embedding_dim,
             device=self.device,
         )
         link_predictor = MergeLayer(
@@ -417,7 +431,10 @@ class DyGFormerModule(LinkPredictor):
                 batch_neg_src_node_ids = batch_src_node_ids
             batch_neg_node_interact_times = batch_node_interact_times
 
-        inference_kwargs = {"analyze_length": not self.fit}
+        inference_kwargs = {
+            "analyze_length": not self.fit,
+            "analyze_attn_scores": self.hparams.analyze_attn_scores,
+        }
         pred_out = self._pred_pos_neg_scores(
             pos_src=batch_src_node_ids,
             pos_dst=batch_dst_node_ids,
@@ -428,7 +445,7 @@ class DyGFormerModule(LinkPredictor):
             edge_ids=batch_edge_ids,
             **inference_kwargs,
         )
-        if inference_kwargs["analyze_length"]:  # with length analysis
+        if inference_kwargs["analyze_length"] and inference_kwargs["analyze_attn_scores"]:
             (
                 pos_scores,
                 neg_scores,
@@ -436,6 +453,24 @@ class DyGFormerModule(LinkPredictor):
                 pos_dst_history_length_analysis,
                 neg_src_history_length_analysis,
                 neg_dst_history_length_analysis,
+                pos_src_attn_scores,
+                pos_dst_attn_scores,
+            ) = pred_out
+        elif inference_kwargs["analyze_length"]:  # with length analysis
+            (
+                pos_scores,
+                neg_scores,
+                pos_src_history_length_analysis,
+                pos_dst_history_length_analysis,
+                neg_src_history_length_analysis,
+                neg_dst_history_length_analysis,
+            ) = pred_out
+        elif inference_kwargs["analyze_attn_scores"]:  # with attention score analysis
+            (
+                pos_scores,
+                neg_scores,
+                pos_src_attn_scores,
+                pos_dst_attn_scores,
             ) = pred_out
         else:
             pos_scores, neg_scores = pred_out
@@ -548,6 +583,15 @@ class DyGFormerModule(LinkPredictor):
                 self.test_history_length_analysis["neg"]["dst"]["num_temporal_neighbors"].append(
                     neg_dst_history_length_analysis["num_temporal_neighbors"]
                 )
+            if inference_kwargs["analyze_attn_scores"]:
+                self.test_attn_scores_analysis["pos"]["src"]["t"].append(pos_src_attn_scores["t"])
+                self.test_attn_scores_analysis["pos"]["src"]["attn_scores"].append(
+                    pos_src_attn_scores["attn_scores"]
+                )
+                self.test_attn_scores_analysis["pos"]["dst"]["t"].append(pos_dst_attn_scores["t"])
+                self.test_attn_scores_analysis["pos"]["dst"]["attn_scores"].append(
+                    pos_dst_attn_scores["attn_scores"]
+                )
 
         if self.dataset_type == "tgbl":
             for sample_idx in range(len(batch_src_node_ids)):
@@ -584,27 +628,67 @@ class DyGFormerModule(LinkPredictor):
     ) -> torch.Tensor:
         """Predict the probabilities/scores of (pos_src[i], pos_dst[i]) happening at time pos_t[i]
         and (neg_src[i], neg_dst[i]) happening at time neg_t[i]."""
-        pos_pred_out = self._pred_scores(pos_src, pos_dst, pos_t, **kwargs)
         analyze_length = "analyze_length" in kwargs and kwargs["analyze_length"]
-        if analyze_length:  # with length analysis
+        analyze_attn_scores = "analyze_attn_scores" in kwargs and kwargs["analyze_attn_scores"]
+        pos_pred_out = self._pred_scores(pos_src, pos_dst, pos_t, **kwargs)
+        if analyze_length and analyze_attn_scores:
+            (
+                pos_scores,
+                pos_src_history_length_analysis,
+                pos_dst_history_length_analysis,
+                pos_src_attn_scores,
+                pos_dst_attn_scores,
+            ) = pos_pred_out
+        elif analyze_length:  # with length analysis
             (
                 pos_scores,
                 pos_src_history_length_analysis,
                 pos_dst_history_length_analysis,
             ) = pos_pred_out
+        elif analyze_attn_scores:  # with attention score analysis
+            (
+                pos_scores,
+                pos_src_attn_scores,
+                pos_dst_attn_scores,
+            ) = pos_pred_out
         else:
             pos_scores = pos_pred_out
         neg_pred_out = self._pred_scores(neg_src, neg_dst, neg_t, **kwargs)
-        if analyze_length:  # with length analysis
+        if analyze_length and analyze_attn_scores:
+            (
+                neg_scores,
+                neg_src_history_length_analysis,
+                neg_dst_history_length_analysis,
+                _,
+                _,
+            ) = neg_pred_out
+        elif analyze_length:  # with length analysis
             (
                 neg_scores,
                 neg_src_history_length_analysis,
                 neg_dst_history_length_analysis,
             ) = neg_pred_out
+        elif analyze_attn_scores:  # with attention score analysis
+            (
+                neg_scores,
+                _,
+                _,
+            ) = neg_pred_out
         else:
             neg_scores = neg_pred_out
 
-        if analyze_length:
+        if analyze_length and analyze_attn_scores:
+            return (
+                pos_scores,
+                neg_scores,
+                pos_src_history_length_analysis,
+                pos_dst_history_length_analysis,
+                neg_src_history_length_analysis,
+                neg_dst_history_length_analysis,
+                pos_src_attn_scores,
+                pos_dst_attn_scores,
+            )
+        elif analyze_length:
             return (
                 pos_scores,
                 neg_scores,
@@ -613,6 +697,8 @@ class DyGFormerModule(LinkPredictor):
                 neg_src_history_length_analysis,
                 neg_dst_history_length_analysis,
             )
+        elif analyze_attn_scores:
+            return pos_scores, neg_scores, pos_src_attn_scores, pos_dst_attn_scores
         else:
             return pos_scores, neg_scores
 
@@ -620,7 +706,37 @@ class DyGFormerModule(LinkPredictor):
         self, src: np.ndarray, dst: np.ndarray, t: np.ndarray, **kwargs
     ) -> torch.Tensor:
         """Predict the probability/score of (src[i], dst[i]) happening at time t[i]."""
-        if "analyze_length" in kwargs and kwargs["analyze_length"]:
+        analyze_length = "analyze_length" in kwargs and kwargs["analyze_length"]
+        analyze_attn_scores = "analyze_attn_scores" in kwargs and kwargs["analyze_attn_scores"]
+
+        if analyze_length and analyze_attn_scores:
+            (
+                src_node_embeddings,
+                dst_node_embeddings,
+                src_history_length_analysis,
+                dst_history_length_analysis,
+                src_attn_scores,
+                dst_attn_scores,
+            ) = self.model[0].compute_src_dst_node_temporal_embeddings(
+                src_node_ids=src,
+                dst_node_ids=dst,
+                node_interact_times=t,
+                analyze_length=True,
+                analyze_attn_scores=True,
+            )
+            scores = (
+                self.model[1](input_1=src_node_embeddings, input_2=dst_node_embeddings)
+                .squeeze(dim=-1)
+                .sigmoid()
+            )
+            return (
+                scores,
+                src_history_length_analysis,
+                dst_history_length_analysis,
+                src_attn_scores,
+                dst_attn_scores,
+            )
+        elif analyze_length:
             (
                 src_node_embeddings,
                 dst_node_embeddings,
@@ -635,6 +751,21 @@ class DyGFormerModule(LinkPredictor):
                 .sigmoid()
             )
             return scores, src_history_length_analysis, dst_history_length_analysis
+        elif analyze_attn_scores:  # with attention score analysis
+            (
+                src_node_embeddings,
+                dst_node_embeddings,
+                src_attn_scores,
+                dst_attn_scores,
+            ) = self.model[0].compute_src_dst_node_temporal_embeddings(
+                src_node_ids=src, dst_node_ids=dst, node_interact_times=t, analyze_attn_scores=True
+            )
+            scores = (
+                self.model[1](input_1=src_node_embeddings, input_2=dst_node_embeddings)
+                .squeeze(dim=-1)
+                .sigmoid()
+            )
+            return scores, src_attn_scores, dst_attn_scores
         else:
             src_node_embeddings, dst_node_embeddings = self.model[
                 0
@@ -770,6 +901,8 @@ class DyGFormerModule(LinkPredictor):
             self.test_perf_list,
             analyze_length=analyze_length,
             length_analysis=self.test_history_length_analysis,
+            analyze_attn_scores=self.hparams.analyze_attn_scores,
+            attn_scores_analysis=self.test_attn_scores_analysis,
         )
         self.test_pos_scores = []
         self.test_neg_scores = []
@@ -805,6 +938,19 @@ class DyGFormerModule(LinkPredictor):
                     },
                 },
             }
+        if self.hparams.analyze_attn_scores:
+            self.test_attn_scores_analysis = {
+                "pos": {
+                    "src": {
+                        "t": [],
+                        "attn_scores": [],
+                    },
+                    "dst": {
+                        "t": [],
+                        "attn_scores": [],
+                    },
+                }
+            }
 
     def _aggregate_eval_log(
         self,
@@ -814,6 +960,8 @@ class DyGFormerModule(LinkPredictor):
         perf_list: List[float] = None,
         analyze_length: bool = False,
         length_analysis: Dict[str, Dict[str, Dict[str, List[float]]]] = None,
+        analyze_attn_scores: bool = False,
+        attn_scores_analysis: Dict[str, Dict[str, Dict[str, List[float]]]] = None,
     ) -> None:
         """Aggregate and log the evaluation performance.
 
@@ -1000,6 +1148,28 @@ class DyGFormerModule(LinkPredictor):
                 torch.save(
                     length_analysis,
                     f"{checkpoint_dir}/{stage}_{self.eval_negative_sample_strategy}_length_analysis.pt",
+                )
+        if analyze_attn_scores:
+            attn_scores_analysis["pos"]["src"]["t"] = torch.cat(
+                attn_scores_analysis["pos"]["src"]["t"], dim=0
+            )
+            attn_scores_analysis["pos"]["src"]["attn_scores"] = torch.cat(
+                attn_scores_analysis["pos"]["src"]["attn_scores"], dim=0
+            )
+
+            attn_scores_analysis["pos"]["dst"]["t"] = torch.cat(
+                attn_scores_analysis["pos"]["dst"]["t"], dim=0
+            )
+            attn_scores_analysis["pos"]["dst"]["attn_scores"] = torch.cat(
+                attn_scores_analysis["pos"]["dst"]["attn_scores"], dim=0
+            )
+            checkpoint_dir = self.trainer.checkpoint_callback.dirpath
+            if checkpoint_dir is not None:
+                if not os.path.exists(checkpoint_dir):
+                    os.makedirs(checkpoint_dir)
+                torch.save(
+                    attn_scores_analysis,
+                    f"{checkpoint_dir}/{stage}_{self.eval_negative_sample_strategy}_attn_scores_analysis.pt",
                 )
 
     # def predict_step(self, batch):
