@@ -50,9 +50,19 @@ class LinkPredictor(L.LightningModule):
             self.trainer.datamodule.train_negative_sample_strategy
         )
         self.eval_negative_sample_strategy = self.trainer.datamodule.eval_negative_sample_strategy
-        self.train_neg_edge_sampler = NegativeEdgeSampler(
-            src_node_ids=self.train_data.src_node_ids, dst_node_ids=self.train_data.dst_node_ids
-        )
+        if self.train_negative_sample_strategy == "historical":
+            self.train_neg_edge_sampler = NegativeEdgeSampler(
+                src_node_ids=self.train_data.src_node_ids,
+                dst_node_ids=self.train_data.dst_node_ids,
+                interact_times=self.train_data.node_interact_times,
+                negative_sample_strategy=self.train_negative_sample_strategy,
+                seed=0,
+            )
+        elif self.train_negative_sample_strategy == "random":
+            self.train_neg_edge_sampler = NegativeEdgeSampler(
+                src_node_ids=self.train_data.src_node_ids,
+                dst_node_ids=self.train_data.dst_node_ids,
+            )
 
         self.train_pos_scores = []
         self.train_neg_scores = []
