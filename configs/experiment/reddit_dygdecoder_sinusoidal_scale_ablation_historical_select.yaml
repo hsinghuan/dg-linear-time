@@ -1,15 +1,15 @@
 # @package _global_
 
 defaults:
-  - override /data: UNtrade
-  - override /model: dygformer
+  - override /data: reddit
+  - override /model: dygdecoder
   - override /callbacks: default
   - override /trainer: gpu
 
 logger:
   wandb:
     tags: ${tags}
-    group: UNtrade-dygformer-separate-linear
+    group: reddit-dygdecoder-sinusoidal-scale-ablation-historical-select
 
 tags: ["dev"]
 
@@ -17,11 +17,11 @@ seed: 1
 
 callbacks:
   early_stopping:
-    monitor: val/random/ap
+    monitor: val/historical/ap
     mode: max
     patience: 20
   model_checkpoint:
-    monitor: val/random/ap
+    monitor: val/historical/ap
     mode: max
 
 trainer:
@@ -31,11 +31,14 @@ trainer:
   num_sanity_val_steps: 0
 
 model:
-  max_input_sequence_length: 256
-  patch_size: 8
+  max_input_sequence_length: 64
+  patch_size: 2
   embed_method: separate
-  time_encoding_method: linear
-  time_feat_dim: 1
-  scale_timediff: true
+  time_encoding_method: sinusoidal
   channel_embedding_dim: 50
-  dropout: 0.3
+  dropout: 0.1
+  scale_timediff: true
+  inter_event_time: false
+
+data:
+  eval_negative_sample_strategy: historical

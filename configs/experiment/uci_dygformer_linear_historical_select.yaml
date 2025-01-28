@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - override /data: UNtrade
+  - override /data: uci
   - override /model: dygformer
   - override /callbacks: default
   - override /trainer: gpu
@@ -9,7 +9,7 @@ defaults:
 logger:
   wandb:
     tags: ${tags}
-    group: UNtrade-dygformer-separate-linear
+    group: uci-dygformer-linear-historical-select
 
 tags: ["dev"]
 
@@ -17,11 +17,11 @@ seed: 1
 
 callbacks:
   early_stopping:
-    monitor: val/random/ap
+    monitor: val/historical/ap
     mode: max
     patience: 20
   model_checkpoint:
-    monitor: val/random/ap
+    monitor: val/historical/ap
     mode: max
 
 trainer:
@@ -31,11 +31,13 @@ trainer:
   num_sanity_val_steps: 0
 
 model:
-  max_input_sequence_length: 256
-  patch_size: 8
-  embed_method: separate
+  max_input_sequence_length: 32
+  patch_size: 1
   time_encoding_method: linear
   time_feat_dim: 1
   scale_timediff: true
   channel_embedding_dim: 50
-  dropout: 0.3
+  dropout: 0.1
+
+data:
+  eval_negative_sample_strategy: historical
