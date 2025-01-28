@@ -37,7 +37,7 @@ model:
   time_encoding_method: sinusoidal
   scale_timediff: true
   channel_embedding_dim: 50
-  dropout: 0.1
+  dropout: 0.3
 
 data:
   train_negative_sample_strategy: historical
