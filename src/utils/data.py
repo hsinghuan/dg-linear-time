@@ -442,6 +442,7 @@ class NegativeEdgeSampler:
         batch_dst_node_ids: np.ndarray = None,
         current_batch_start_time: float = 0.0,
         current_batch_end_time: float = 0.0,
+        return_historical_random_num: bool = False,
     ):
         """Sample negative edges, support random, historical and inductive sampling strategy :param
         size: int, number of sampled negative edges :param batch_src_node_ids: ndarray, shape
@@ -449,16 +450,36 @@ class NegativeEdgeSampler:
         shape (batch_size, ), destination node ids in the current batch :param
         current_batch_start_time: float, start time in the current batch :param
         current_batch_end_time: float, end time in the current batch :return:"""
+        if self.negative_sample_strategy != "historical":
+            assert return_historical_random_num is False
+
         if self.negative_sample_strategy == "random":
             negative_src_node_ids, negative_dst_node_ids = self.random_sample(size=size)
         elif self.negative_sample_strategy == "historical":
-            negative_src_node_ids, negative_dst_node_ids = self.historical_sample(
-                size=size,
-                batch_src_node_ids=batch_src_node_ids,
-                batch_dst_node_ids=batch_dst_node_ids,
-                current_batch_start_time=current_batch_start_time,
-                current_batch_end_time=current_batch_end_time,
-            )
+            if return_historical_random_num:
+                (
+                    negative_src_node_ids,
+                    negative_dst_node_ids,
+                    historical_num,
+                    random_num,
+                ) = self.historical_sample(
+                    size=size,
+                    batch_src_node_ids=batch_src_node_ids,
+                    batch_dst_node_ids=batch_dst_node_ids,
+                    current_batch_start_time=current_batch_start_time,
+                    current_batch_end_time=current_batch_end_time,
+                    return_historical_random_num=return_historical_random_num,
+                )
+                return negative_src_node_ids, negative_dst_node_ids, historical_num, random_num
+            else:
+                negative_src_node_ids, negative_dst_node_ids = self.historical_sample(
+                    size=size,
+                    batch_src_node_ids=batch_src_node_ids,
+                    batch_dst_node_ids=batch_dst_node_ids,
+                    current_batch_start_time=current_batch_start_time,
+                    current_batch_end_time=current_batch_end_time,
+                    return_historical_random_num=return_historical_random_num,
+                )
         elif self.negative_sample_strategy == "inductive":
             negative_src_node_ids, negative_dst_node_ids = self.inductive_sample(
                 size=size,
@@ -530,6 +551,7 @@ class NegativeEdgeSampler:
         batch_dst_node_ids: np.ndarray,
         current_batch_start_time: float,
         current_batch_end_time: float,
+        return_historical_random_num: bool = False,
     ):
         """Historical sampling strategy, first randomly samples among historical edges that are not
         in the current batch, if number of historical edges is smaller than size, then fill in
@@ -585,9 +607,27 @@ class NegativeEdgeSampler:
                 historical_sample_edge_node_indices
             ]
 
-        # Note that if one of the input of np.concatenate is empty, the output will be composed of floats.
-        # Hence, convert the type to long to guarantee valid index
-        return negative_src_node_ids.astype(np.longlong), negative_dst_node_ids.astype(np.longlong)
+        if return_historical_random_num:
+            if len(unique_historical_edges) >= size:
+                return (
+                    negative_src_node_ids.astype(np.longlong),
+                    negative_dst_node_ids.astype(np.longlong),
+                    size,
+                    0,
+                )
+            else:
+                return (
+                    negative_src_node_ids.astype(np.longlong),
+                    negative_dst_node_ids.astype(np.longlong),
+                    len(unique_historical_edges),
+                    num_random_sample_edges,
+                )
+        else:
+            # Note that if one of the input of np.concatenate is empty, the output will be composed of floats.
+            # Hence, convert the type to long to guarantee valid index
+            return negative_src_node_ids.astype(np.longlong), negative_dst_node_ids.astype(
+                np.longlong
+            )
 
     def inductive_sample(
         self,
