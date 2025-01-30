@@ -41,7 +41,6 @@ class CosineTimeEncoder(nn.Module):
         # Tensor, shape (batch_size, seq_len, 1)
         timestamps = timestamps.unsqueeze(dim=2)
         timestamps = (timestamps - self.mean) / self.std
-        # print("timestamps shape", timestamps.shape)
         # Tensor, shape (batch_size, seq_len, time_dim)
         output = torch.cos(self.w(timestamps))
         # print("output shape", output.shape)
@@ -115,7 +114,6 @@ class TanhTimeEncoder(nn.Module):
         (batch_size, seq_len) :return:"""
         # Tensor, shape (batch_size, seq_len, 1)
         timestamps = timestamps.unsqueeze(dim=2)
-        # print("timestamps shape", timestamps.shape)
         # Tensor, shape (batch_size, seq_len, time_dim)
         output = self.tanh(self.w(timestamps))
         # print("output shape", output.shape)
@@ -148,10 +146,6 @@ class ExpTimeEncoder(nn.Module):
         # Tensor, shape (batch_size, seq_len, time_dim)
         exponent = torch.clamp(-self.w(timestamps), max=40.0)  # avoid overflow
         output = torch.exp(exponent)
-        # if exponent.min() < -88:
-        #     print("exponents", exponent, exponent.min())
-        #     print("timestamps", timestamps)
-        #     print("output", output)
         return output
 
 
@@ -181,36 +175,3 @@ class LinearTimeEncoder(nn.Module):
     def forward(self, timestamps: torch.Tensor):
         timestamps = self.no_time_encoder(timestamps)
         return self.linear(timestamps)
-
-
-# exp_time_encoder = TimeEncoder(time_dim=8)
-# timestamps = torch.tensor([[3000,1000,10]], dtype=torch.float32)
-# print(timestamps)
-# output = exp_time_encoder(timestamps)
-# print(output)
-
-# exp_time_encoder = ExpTimeEncoder(time_dim=8, median_inter_event_time=1000)
-# timestamps = torch.tensor([[3000,1000,10]], dtype=torch.float32)
-# print(timestamps)
-# output = exp_time_encoder(timestamps)
-# print(output)
-
-# no_time_encoder = NoTimeEncoder(mean=100, std=100)
-# timestamps = torch.tensor([[3000,1000,10], [20, 30,100]], dtype=torch.float32)
-# print(timestamps)
-# output = no_time_encoder(timestamps)
-# print(output)
-
-# linear_time_encoder = LinearTimeEncoder(time_dim=8, mean=100, std=100)
-# timestamps = torch.tensor([[3000,1000,10], [20, 30,100]], dtype=torch.float32)
-# print(timestamps)
-# output = linear_time_encoder(timestamps)
-# print(output)
-
-# sinecosine_time_encoder = SineCosineTimeEncoder(time_dim=8, mean=0, std=1)
-# timestamps = torch.tensor([[3000,1000,10], [20, 30,100]], dtype=torch.float32)
-# print(timestamps)
-# print(timestamps.shape)
-# output = sinecosine_time_encoder(timestamps)
-# print(output)
-# print(output.shape)

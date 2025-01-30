@@ -5,9 +5,7 @@ from typing import Any, Dict, List
 import numpy as np
 import torch
 import torch.nn as nn
-from lightning import LightningModule
 from sklearn.metrics import average_precision_score, roc_auc_score
-from tgb.linkproppred.evaluate import Evaluator
 
 from src.models.linkpredictor import LinkPredictor
 from src.models.modules.dygdecoder import DyGDecoder
@@ -16,7 +14,7 @@ from src.utils.analysis import (
     analyze_inter_event_time,
     analyze_target_historical_event_time_diff,
 )
-from src.utils.data import Data, NegativeEdgeSampler, get_neighbor_sampler
+from src.utils.data import Data
 
 
 class DyGDecoderModule(LinkPredictor):
@@ -137,6 +135,8 @@ class DyGDecoderModule(LinkPredictor):
                 },
             },
         }
+
+        # lists for attention score analysis
         self.test_attn_scores_analysis = {
             "pos": {
                 "src": {
@@ -243,16 +243,13 @@ class DyGDecoderModule(LinkPredictor):
 
     def training_step(self, batch: torch.Tensor) -> torch.Tensor:
         """One batch of training."""
-        # print(f"batch device: {batch.device} self device: {self.device}")
         train_data_indices = batch.cpu().numpy()
         batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times = (
             self.train_data.src_node_ids[train_data_indices],
             self.train_data.dst_node_ids[train_data_indices],
             self.train_data.node_interact_times[train_data_indices],
         )
-        # _, batch_neg_dst_node_ids = self.train_neg_edge_sampler.sample(
-        #     size=len(batch_src_node_ids)
-        # )
+
         if self.train_neg_edge_sampler.negative_sample_strategy == "historical":
             _, batch_neg_dst_node_ids = self.train_neg_edge_sampler.sample(
                 size=len(batch_src_node_ids),
@@ -344,10 +341,8 @@ class DyGDecoderModule(LinkPredictor):
             [torch.ones_like(pos_scores), torch.zeros_like(neg_scores)],
             dim=0,
         )
-        # print(f"predicts: {predicts} labels: {labels}")
         loss = self.loss_func(input=predicts, target=labels)
         self.log("train/loss", loss, on_step=True, on_epoch=False, prog_bar=True)
-        # print(f"loss: {loss}")
         return loss
 
     def _eval_step(self, batch: torch.Tensor, data: Data, stage: str) -> None:

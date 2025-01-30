@@ -68,9 +68,6 @@ class DyGFormer(nn.Module):
         self.embed_method = embed_method
         self.device = device
 
-        # print("time encoding method", time_encoding_method)
-        # print("avg_time_diff", avg_time_diff)
-        # print("std_time_diff", std_time_diff)
         if time_encoding_method == "sinusoidal":
             self.time_encoder = CosineTimeEncoder(
                 time_dim=time_feat_dim, mean=avg_time_diff, std=std_time_diff
@@ -80,7 +77,6 @@ class DyGFormer(nn.Module):
                 time_dim=time_feat_dim, mean=avg_time_diff, std=std_time_diff
             )
         elif time_encoding_method == "linear":
-            # print("linear!")
             self.time_encoder = NoTimeEncoder(mean=avg_time_diff, std=std_time_diff)
 
         self.neighbor_co_occurrence_feat_dim = self.channel_embedding_dim
@@ -108,7 +104,7 @@ class DyGFormer(nn.Module):
                 ),
                 "time": nn.Linear(
                     in_features=self.patch_size * self.time_feat_dim,
-                    out_features=self.time_channel_embedding_dim,  # self.channel_embedding_dim, # exp
+                    out_features=self.time_channel_embedding_dim,
                     bias=True,
                 ),
                 "neighbor_co_occurrence": nn.Linear(
@@ -127,7 +123,7 @@ class DyGFormer(nn.Module):
         self.transformers = nn.ModuleList(
             [
                 TransformerEncoder(
-                    attention_dim=attention_dim,  # self.num_channels * self.channel_embedding_dim, #
+                    attention_dim=attention_dim,
                     num_heads=self.num_heads,
                     dropout=self.dropout,
                 )
@@ -136,7 +132,7 @@ class DyGFormer(nn.Module):
         )
 
         self.output_layer = nn.Linear(
-            in_features=attention_dim,  # self.num_channels * self.channel_embedding_dim, #
+            in_features=attention_dim,
             out_features=self.output_dim,
             bias=True,
         )
@@ -773,40 +769,6 @@ class DyGFormer(nn.Module):
             assert self.neighbor_sampler.seed is not None
             self.neighbor_sampler.reset_random_state()
 
-    # def _analyze_length(self, padded_nodes_neighbor_ids: np.ndarray, padded_nodes_neighbor_times: np.ndarray, node_interact_times: np.ndarray):
-    #     """Analyze the average, median, and maximum time differences between the node_interact_times of the current batch of nodes and past historical interactions in padded_nodes_neighbor_times.
-    #     Also measures the number of temporal neighbors for each node in the current batch.
-    #     :param padded_nodes_neighbor_ids: ndarray, shape (batch_size, max_seq_length)
-    #     :param padded_nodes_neighbor_times: ndarray, shape (batch_size, max_seq_length)
-    #     :param node_interact_times: ndarray, shape (batch_size, )
-    #     :return: dict, analysis results
-    #     """
-    #     # three lists to store the average, median, and maximum time differences between the node_interact_times of the current batch of nodes and past historical interactions in padded_nodes_neighbor_times
-    #     avg_time_diffs, median_time_diffs, max_time_diffs = [], [], []
-    #     # list to store the number of temporal neighbors for each node in the current batch
-    #     num_temporal_neighbors = []
-    #     for idx in range(len(node_interact_times)):
-    #         # get the indices of the valid padded_nodes_neighbor_times
-    #         valid_indices = np.where(padded_nodes_neighbor_ids[idx] > 0)[0]
-    #         # get the valid padded_nodes_neighbor_times
-    #         valid_padded_nodes_neighbor_times = padded_nodes_neighbor_times[idx][valid_indices]
-    #         # get the valid padded_nodes_neighbor_ids
-    #         valid_padded_nodes_neighbor_ids = padded_nodes_neighbor_ids[idx][valid_indices]
-    #         # get the valid time differences between the node_interact_times of the current batch of nodes and past historical interactions
-    #         time_diffs = node_interact_times[idx] - valid_padded_nodes_neighbor_times
-    #         # get the average, median, and maximum time differences
-    #         avg_time_diffs.append(np.mean(time_diffs))
-    #         median_time_diffs.append(np.median(time_diffs))
-    #         max_time_diffs.append(np.max(time_diffs))
-    #         # get the number of temporal neighbors
-    #         num_temporal_neighbors.append(len(valid_padded_nodes_neighbor_ids))
-    #     return {
-    #         "avg_time_diffs": avg_time_diffs,
-    #         "median_time_diffs": median_time_diffs,
-    #         "max_time_diffs": max_time_diffs,
-    #         "num_temporal_neighbors": num_temporal_neighbors,
-    #     }
-
 
 class NeighborCooccurrenceEncoder(nn.Module):
     """Neighbor co-occurrence encoder."""
@@ -1008,9 +970,6 @@ class TransformerEncoder(nn.Module):
             query=transposed_inputs, key=transposed_inputs, value=transposed_inputs
         )
         hidden_states = hidden_states.transpose(0, 1)
-        # hidden_states = self.multi_head_attention(
-        #     query=transposed_inputs, key=transposed_inputs, value=transposed_inputs
-        # )[0].transpose(0, 1)
 
         # Tensor, shape (batch_size, num_patches, self.attention_dim)
         outputs = inputs + self.dropout(hidden_states)

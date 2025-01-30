@@ -1,19 +1,16 @@
 import os
-from collections import defaultdict
 from typing import Any, Dict, List
 
 import numpy as np
 import torch
 import torch.nn as nn
-from lightning import LightningModule
 from sklearn.metrics import average_precision_score, roc_auc_score
-from tgb.linkproppred.evaluate import Evaluator
 
 from src.models.linkpredictor import LinkPredictor
 from src.models.modules.dygformer import DyGFormer
 from src.models.modules.mlp import MergeLayer
 from src.utils.analysis import analyze_target_historical_event_time_diff
-from src.utils.data import Data, NegativeEdgeSampler, get_neighbor_sampler
+from src.utils.data import Data
 
 
 class DyGFormerModule(LinkPredictor):
@@ -134,6 +131,7 @@ class DyGFormerModule(LinkPredictor):
                 },
             },
         }
+        # lists for attention score analyses
         self.test_attn_scores_analysis = {
             "pos": {
                 "src": {
@@ -157,22 +155,11 @@ class DyGFormerModule(LinkPredictor):
             else self.node_raw_features.shape[1]
         )
 
-        # node_ids = np.concatenate([self.train_data.src_node_ids, self.train_data.dst_node_ids])
-        # node_interact_times = np.concatenate(
-        #     [self.train_data.node_interact_times, self.train_data.node_interact_times]
-        # )
-        # (
-        #     _,
-        #     _,
-        #     nodes_neighbor_times_list,
-        # ) = self.train_neighbor_sampler.get_all_first_hop_neighbors(
-        #     node_ids=node_ids, node_interact_times=node_interact_times
-        # )
-
         if self.hparams.time_encoding_method == "linear":
             assert self.hparams.time_feat_dim == 1
 
         if self.hparams.scale_timediff:
+            # get the time difference statistics in the training set
             node_ids = np.concatenate([self.train_data.src_node_ids, self.train_data.dst_node_ids])
             node_interact_times = np.concatenate(
                 [self.train_data.node_interact_times, self.train_data.node_interact_times]
@@ -201,24 +188,6 @@ class DyGFormerModule(LinkPredictor):
             self.avg_time_diff = 0
             self.median_time_diff = None
             self.std_time_diff = 1
-
-        # avg_time_diffs_per_tgt_edge, _, _, _ = analyze_target_historical_event_time_diff(
-        #     nodes_neighbor_times_list,
-        #     node_interact_times,
-        #     self.hparams.max_input_sequence_length,
-        # )
-
-        # if self.hparams.time_encoding_method == "sinusoidal":
-        #     if self.hparams.scale_sinusoidal_input:
-        #         self.avg_time_diff = np.nanmean(avg_time_diffs_per_tgt_edge)
-        #         self.std_time_diff = np.nanstd(avg_time_diffs_per_tgt_edge)
-        #     else:
-        #         self.avg_time_diff = 0
-        #         self.std_time_diff = 1
-        # elif self.hparams.time_encoding_method == "linear":
-        #     assert self.hparams.time_feat_dim == 1
-        #     self.avg_time_diff = np.nanmean(avg_time_diffs_per_tgt_edge)
-        #     self.std_time_diff = np.nanstd(avg_time_diffs_per_tgt_edge)
 
         backbone = DyGFormer(
             node_raw_features=self.node_raw_features,
@@ -253,16 +222,12 @@ class DyGFormerModule(LinkPredictor):
 
     def training_step(self, batch: torch.Tensor) -> torch.Tensor:
         """One batch of training."""
-        # print(f"batch device: {batch.device} self device: {self.device}")
         train_data_indices = batch.cpu().numpy()
         batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times = (
             self.train_data.src_node_ids[train_data_indices],
             self.train_data.dst_node_ids[train_data_indices],
             self.train_data.node_interact_times[train_data_indices],
         )
-        # _, batch_neg_dst_node_ids = self.train_neg_edge_sampler.sample(
-        #     size=len(batch_src_node_ids)
-        # )
 
         if self.train_neg_edge_sampler.negative_sample_strategy == "historical":
             _, batch_neg_dst_node_ids = self.train_neg_edge_sampler.sample(
@@ -279,12 +244,6 @@ class DyGFormerModule(LinkPredictor):
 
         batch_neg_src_node_ids = batch_src_node_ids
 
-        # pos_scores = self._pred_scores(
-        #     batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times
-        # )
-        # neg_scores = self._pred_scores(
-        #     batch_neg_src_node_ids, batch_neg_dst_node_ids, batch_node_interact_times
-        # )
         train_kwargs = {"analyze_length": self.current_epoch == 0}
         pred_out = self._pred_pos_neg_scores(
             pos_src=batch_src_node_ids,
@@ -1023,69 +982,6 @@ class DyGFormerModule(LinkPredictor):
                 on_epoch=True,
             )
 
-        # # finer grained aggregation (aggregate to 4 bins) at trainer.validation() or trainer.test() stages
-        # if not self.fit:
-        #     pos_scores_num = len(pos_scores)
-        #     neg_scores_num = len(neg_scores)
-        #     for i in range(4):
-        #         if i != 3:
-        #             pos_scores_per_quarter = pos_scores[
-        #                 i * pos_scores_num // 4 : (i + 1) * pos_scores_num // 4
-        #             ]
-        #             neg_scores_per_quarter = neg_scores[
-        #                 i * neg_scores_num // 4 : (i + 1) * neg_scores_num // 4
-        #             ]
-        #         else:
-        #             pos_scores_per_quarter = pos_scores[i * pos_scores_num // 4 :]
-        #             neg_scores_per_quarter = neg_scores[i * neg_scores_num // 4 :]
-        #         scores_per_quarter = torch.cat(
-        #             (pos_scores_per_quarter, neg_scores_per_quarter), dim=0
-        #         )
-        #         labels_per_quarter = torch.cat(
-        #             (
-        #                 torch.ones_like(pos_scores_per_quarter),
-        #                 torch.zeros_like(neg_scores_per_quarter),
-        #             ),
-        #             dim=0,
-        #         )
-        #         self.log(
-        #             ap_log_name + f"_quarter_{i+1}",
-        #             average_precision_score(
-        #                 y_true=labels_per_quarter.cpu().numpy(),
-        #                 y_score=scores_per_quarter.cpu().numpy(),
-        #             ),
-        #             on_step=False,
-        #             on_epoch=True,
-        #             prog_bar=progress_bar,
-        #         )
-        #         self.log(
-        #             auc_log_name + f"_quarter_{i+1}",
-        #             roc_auc_score(
-        #                 y_true=labels_per_quarter.cpu().numpy(),
-        #                 y_score=scores_per_quarter.cpu().numpy(),
-        #             ),
-        #             on_step=False,
-        #             on_epoch=True,
-        #             prog_bar=progress_bar,
-        #         )
-
-        #     if perf_list is not None:
-        #         perf_list_num = len(perf_list)
-        #         for i in range(4):
-        #             if i != 3:
-        #                 perf_list_per_quarter = perf_list[
-        #                     i * perf_list_num // 4 : (i + 1) * perf_list_num // 4
-        #                 ]
-        #             else:
-        #                 perf_list_per_quarter = perf_list[i * perf_list_num // 4 :]
-        #             self.log(
-        #                 metric_log_name + f"_quarter_{i+1}",
-        #                 np.mean(perf_list_per_quarter),
-        #                 on_step=False,
-        #                 on_epoch=True,
-        #                 prog_bar=progress_bar,
-        #             )
-
         if analyze_length:
             length_analysis["pos"]["src"]["avg_time_diffs"] = np.concatenate(
                 length_analysis["pos"]["src"]["avg_time_diffs"]
@@ -1171,16 +1067,3 @@ class DyGFormerModule(LinkPredictor):
                     attn_scores_analysis,
                     f"{checkpoint_dir}/{stage}_{self.eval_negative_sample_strategy}_attn_scores_analysis.pt",
                 )
-
-    # def predict_step(self, batch):
-    #     """One batch of prediction."""
-    #     test_data_indices = batch.cpu().numpy()
-    #     batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times = (
-    #         self.test_data.src_node_ids[test_data_indices],
-    #         self.test_data.dst_node_ids[test_data_indices],
-    #         self.test_data.node_interact_times[test_data_indices],
-    #     )
-    #     scores = self._pred_scores(
-    #         src=batch_src_node_ids, dst=batch_dst_node_ids, t=batch_node_interact_times
-    #     )
-    #     return scores

@@ -324,22 +324,6 @@ class LinkPredictor(L.LightningModule):
                     ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap_final"
                     auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc_final"
 
-        # if self.fit:
-        #     if self.fast_eval:
-        #         ap_log_name = f"{stage}/ap_fast"
-        #         auc_log_name = f"{stage}/auc_fast"
-        #         metric_log_name = f"{stage}/{self.metric}_fast"  # must be tgbl dataset
-        #     else:
-        #         ap_log_name = f"{stage}/ap"
-        #         auc_log_name = f"{stage}/auc"
-        #         if self.dataset_type == "tgbl":
-        #             metric_log_name = f"{stage}/{self.metric}"
-        # else:
-        #     ap_log_name = f"{stage}/ap_final"
-        #     auc_log_name = f"{stage}/auc_final"
-        #     if self.dataset_type == "tgbl":
-        #         metric_log_name = f"{stage}/{self.metric}_final"
-
         self.log(
             ap_log_name,
             average_precision_score(y_true=labels.cpu().numpy(), y_score=scores.cpu().numpy()),
@@ -360,69 +344,6 @@ class LinkPredictor(L.LightningModule):
                 on_step=False,
                 on_epoch=True,
             )
-
-        # # finer grained aggregation (aggregate to 4 bins) at trainer.validation() or trainer.test() stages
-        # if not self.fit:
-        #     pos_scores_num = len(pos_scores)
-        #     neg_scores_num = len(neg_scores)
-        #     for i in range(4):
-        #         if i != 3:
-        #             pos_scores_per_quarter = pos_scores[
-        #                 i * pos_scores_num // 4 : (i + 1) * pos_scores_num // 4
-        #             ]
-        #             neg_scores_per_quarter = neg_scores[
-        #                 i * neg_scores_num // 4 : (i + 1) * neg_scores_num // 4
-        #             ]
-        #         else:
-        #             pos_scores_per_quarter = pos_scores[i * pos_scores_num // 4 :]
-        #             neg_scores_per_quarter = neg_scores[i * neg_scores_num // 4 :]
-        #         scores_per_quarter = torch.cat(
-        #             (pos_scores_per_quarter, neg_scores_per_quarter), dim=0
-        #         )
-        #         labels_per_quarter = torch.cat(
-        #             (
-        #                 torch.ones_like(pos_scores_per_quarter),
-        #                 torch.zeros_like(neg_scores_per_quarter),
-        #             ),
-        #             dim=0,
-        #         )
-        #         self.log(
-        #             ap_log_name + f"_quarter_{i+1}",
-        #             average_precision_score(
-        #                 y_true=labels_per_quarter.cpu().numpy(),
-        #                 y_score=scores_per_quarter.cpu().numpy(),
-        #             ),
-        #             on_step=False,
-        #             on_epoch=True,
-        #             prog_bar=progress_bar,
-        #         )
-        #         self.log(
-        #             auc_log_name + f"_quarter_{i+1}",
-        #             roc_auc_score(
-        #                 y_true=labels_per_quarter.cpu().numpy(),
-        #                 y_score=scores_per_quarter.cpu().numpy(),
-        #             ),
-        #             on_step=False,
-        #             on_epoch=True,
-        #             prog_bar=progress_bar,
-        #         )
-
-        #     if perf_list is not None:
-        #         perf_list_num = len(perf_list)
-        #         for i in range(4):
-        #             if i != 3:
-        #                 perf_list_per_quarter = perf_list[
-        #                     i * perf_list_num // 4 : (i + 1) * perf_list_num // 4
-        #                 ]
-        #             else:
-        #                 perf_list_per_quarter = perf_list[i * perf_list_num // 4 :]
-        #             self.log(
-        #                 metric_log_name + f"_quarter_{i+1}",
-        #                 np.mean(perf_list_per_quarter),
-        #                 on_step=False,
-        #                 on_epoch=True,
-        #                 prog_bar=progress_bar,
-        #             )
 
     def configure_optimizers(self) -> Dict[str, Any]:
         """Configure and return optimizer and scheduler."""
