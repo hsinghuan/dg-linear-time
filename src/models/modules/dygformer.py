@@ -35,6 +35,7 @@ class DyGFormer(nn.Module):
         avg_time_diff: float = None,
         std_time_diff: float = None,
         time_channel_embedding_dim: int = None,
+        use_positional_embedding: bool = False,
         device: str = "cpu",
     ):
         """
@@ -67,6 +68,12 @@ class DyGFormer(nn.Module):
         self.max_input_sequence_length = max_input_sequence_length
         self.embed_method = embed_method
         self.device = device
+        self.use_positional_embedding = use_positional_embedding
+
+        if use_positional_embedding:
+            assert (
+                avg_time_diff == 0 and std_time_diff == 1 and time_encoding_method == "sinusoidal"
+            )
 
         if time_encoding_method == "sinusoidal":
             self.time_encoder = CosineTimeEncoder(
@@ -622,9 +629,34 @@ class DyGFormer(nn.Module):
                 padded_nodes_edge_ids[
                     idx, 1 : len(nodes_edge_ids_list[idx]) + 1
                 ] = nodes_edge_ids_list[idx]
-                padded_nodes_neighbor_times[
-                    idx, 1 : len(nodes_neighbor_times_list[idx]) + 1
-                ] = nodes_neighbor_times_list[idx]
+                if self.use_positional_embedding:
+                    pos_list = np.flip(
+                        np.unique(nodes_neighbor_times_list[idx])
+                    )  # newer timestamp will have lower position index
+
+                    time_to_pos = {t: i for i, t in enumerate(pos_list)}
+                    padded_nodes_neighbor_times[idx, 0] = 0
+                    if (
+                        nodes_neighbor_times_list[idx][-1] == node_interact_times[idx]
+                    ):  # if target time is the same as the last one in sequence, offset is 0
+                        offset = 0
+                    else:  # otherwise, add 1 to the offset
+                        offset = 1
+
+                    padded_nodes_neighbor_times[
+                        idx, 1 : len(nodes_neighbor_times_list[idx]) + 1
+                    ] = np.array(
+                        [time_to_pos[t] + offset for t in nodes_neighbor_times_list[idx]]
+                    )  # just use the relative position index as the timestamp
+                else:
+                    padded_nodes_neighbor_times[
+                        idx, 1 : len(nodes_neighbor_times_list[idx]) + 1
+                    ] = nodes_neighbor_times_list[idx]
+            else:
+                if (
+                    self.use_positional_embedding
+                ):  # convert the timestamp to the relative position index
+                    padded_nodes_neighbor_times[idx, 0] = 0
 
         # three ndarrays with shape (batch_size, max_seq_length)
         return padded_nodes_neighbor_ids, padded_nodes_edge_ids, padded_nodes_neighbor_times
@@ -651,13 +683,22 @@ class DyGFormer(nn.Module):
             torch.from_numpy(padded_nodes_edge_ids)
         ]
         # Tensor, shape (batch_size, max_seq_length, time_feat_dim)
-        padded_nodes_neighbor_time_features = time_encoder(
-            timestamps=torch.from_numpy(
-                node_interact_times[:, np.newaxis] - padded_nodes_neighbor_times
+        if self.use_positional_embedding:
+            padded_nodes_neighbor_time_features = time_encoder(
+                timestamps=torch.from_numpy(
+                    padded_nodes_neighbor_times
+                )  # simply encode the index as the timestamp
+                .float()
+                .to(self.device)
             )
-            .float()
-            .to(self.device)
-        )
+        else:
+            padded_nodes_neighbor_time_features = time_encoder(
+                timestamps=torch.from_numpy(
+                    node_interact_times[:, np.newaxis] - padded_nodes_neighbor_times
+                )
+                .float()
+                .to(self.device)
+            )
         # ndarray, set the time features to all zeros for the padded timestamp
         padded_nodes_neighbor_time_features[torch.from_numpy(padded_nodes_neighbor_ids == 0)] = 0.0
 

@@ -28,6 +28,7 @@ class TGAT(nn.Module):
         avg_time_diff: float = None,
         std_time_diff: float = None,
         device: str = "cpu",
+        use_positional_embedding: bool = False,
     ):
         super().__init__()
         self.node_raw_features = torch.from_numpy(node_raw_features.astype(np.float32)).to(device)
@@ -41,7 +42,7 @@ class TGAT(nn.Module):
         self.num_heads = num_heads
         self.dropout = dropout
         self.device = device
-
+        self.use_positional_embedding = use_positional_embedding
         if time_encoding_method == "sinusoidal":
             self.time_encoder = CosineTimeEncoder(
                 time_dim=time_feat_dim, mean=avg_time_diff, std=std_time_diff
@@ -156,7 +157,6 @@ class TGAT(nn.Module):
                 node_interact_times=node_interact_times,
                 num_neighbors=num_neighbors,
             )
-
             # get neighbor features from previous layers
             # shape (batch_size * num_neighbors, node_feat_dim)
             neighbor_node_conv_features = self.compute_node_temporal_embeddings(
@@ -175,9 +175,27 @@ class TGAT(nn.Module):
             neighbor_delta_times = node_interact_times[:, np.newaxis] - neighbor_times
 
             # shape (batch_size, num_neighbors, time_feat_dim)
-            neighbor_time_features = self.time_encoder(
-                timestamps=torch.from_numpy(neighbor_delta_times).float().to(device)
-            )
+            if self.use_positional_embedding:
+                delta_times = torch.from_numpy(neighbor_delta_times).float().to(device)
+                # Create positions tensor initialized with zeros
+                positions = torch.zeros_like(delta_times)
+
+                # Create a mask for the last position being 0
+                last_is_zero = (delta_times[:, -1] == 0).unsqueeze(1)  # Shape: (batch_size, 1)
+
+                # Since times are already sorted (non-increasing), just compare adjacent times
+                # to find position changes, going from right to left
+                time_changes = (delta_times[:, 1:] < delta_times[:, :-1]).float()
+                # Cumsum from right to left directly by flipping before and after cumsum
+                positions[:, :-1] = torch.flip(torch.flip(time_changes, [1]).cumsum(dim=1), [1])
+                # Adjust all positions based on whether last time is 0
+                positions = positions + (~last_is_zero).float()
+                neighbor_time_features = self.time_encoder(timestamps=positions)
+
+            else:
+                neighbor_time_features = self.time_encoder(
+                    timestamps=torch.from_numpy(neighbor_delta_times).float().to(device)
+                )
 
             # get edge features, shape (batch_size, num_neighbors, edge_feat_dim)
             neighbor_edge_features = self.edge_raw_features[torch.from_numpy(neighbor_edge_ids)]

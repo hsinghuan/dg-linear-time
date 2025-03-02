@@ -25,6 +25,7 @@ class TGATModule(LinkPredictor):
         sample_neighbor_strategy: str = "recent",
         time_encoding_method: str = "sinusoidal",
         scale_timediff: bool = False,
+        use_positional_embedding: bool = False,
     ):
         super().__init__(sample_neighbor_strategy=sample_neighbor_strategy)
         self.save_hyperparameters(logger=False)
@@ -84,6 +85,7 @@ class TGATModule(LinkPredictor):
             avg_time_diff=self.avg_time_diff,
             std_time_diff=self.std_time_diff,
             device=self.device,
+            use_positional_embedding=self.hparams.use_positional_embedding,
         )
 
         link_predictor = MergeLayer(
@@ -106,7 +108,7 @@ class TGATModule(LinkPredictor):
             self.train_data.node_interact_times[train_data_indices],
         )
 
-        if self.train_neg_edge_sampler.negative_sample_strategy == "historical":
+        if self.train_negative_sample_strategy == "historical":
             _, batch_neg_dst_node_ids = self.train_neg_edge_sampler.sample(
                 size=len(batch_src_node_ids),
                 batch_src_node_ids=batch_src_node_ids,
@@ -114,7 +116,7 @@ class TGATModule(LinkPredictor):
                 current_batch_start_time=batch_node_interact_times[0],
                 current_batch_end_time=batch_node_interact_times[-1],
             )
-        elif self.train_neg_edge_sampler.negative_sample_strategy == "random":
+        elif self.train_negative_sample_strategy == "random":
             _, batch_neg_dst_node_ids = self.train_neg_edge_sampler.sample(
                 size=len(batch_src_node_ids)
             )
