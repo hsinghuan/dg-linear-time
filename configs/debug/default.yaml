@@ -5,8 +5,8 @@
 # overwrite task name so debugging logs are stored in separate folder
 task_name: "debug"
 
-# disable callbacks and loggers during debugging
-callbacks: null
+# disable loggers during debugging
+# callbacks: null
 logger: null
 
 extras:

@@ -13,6 +13,7 @@ model_checkpoint:
   save_last: True
   auto_insert_metric_name: False
 
+
 early_stopping:
   monitor: "val/loss"
   patience: 100
