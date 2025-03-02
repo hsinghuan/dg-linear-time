@@ -8,3 +8,4 @@ test_ratio: 0.15
 num_workers: 0
 pin_memory: False
 train_shuffle: false
+train_negative_sample_strategy: random

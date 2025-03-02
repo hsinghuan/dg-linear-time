@@ -7,3 +7,4 @@ val_ratio: 0.15
 test_ratio: 0.15
 num_workers: 0
 pin_memory: False
+train_negative_sample_strategy: random
