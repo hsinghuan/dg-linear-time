@@ -2,6 +2,7 @@ import os
 import random
 from pathlib import Path
 from shutil import copytree
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -27,7 +28,8 @@ class NonTGBLDataModule(LightningDataModule):
         pin_memory: bool = False,
         train_shuffle: bool = False,
         train_negative_sample_strategy: str = "random",
-        eval_negative_sample_strategy: str = "random",
+        val_negative_sample_strategy: List[str] = ["random"],
+        test_negative_sample_strategy: List[str] = ["random", "historical", "inductive"],
     ) -> None:
         super().__init__()
         # this line allows to access init params with 'self.hparams' attribute
@@ -47,7 +49,8 @@ class NonTGBLDataModule(LightningDataModule):
         self.node_feat_dim = 172
         self.edge_feat_dim = 172
         self.train_negative_sample_strategy = train_negative_sample_strategy
-        self.eval_negative_sample_strategy = eval_negative_sample_strategy
+        self.val_negative_sample_strategy = val_negative_sample_strategy
+        self.test_negative_sample_strategy = test_negative_sample_strategy
 
     def prepare_data(self) -> None:
         # name of original and preprocessed paths
@@ -68,7 +71,7 @@ class NonTGBLDataModule(LightningDataModule):
             return
 
         # Directly use processed dataset by previous works for Enron, SocialEvo, and UCI datasets
-        if self.dataset_name in ["enron", "SocialEvo", "uci"]:
+        if self.dataset_name in ["enron", "SocialEvo", "uci", "lsh", "lsh2"]:
             copytree(
                 os.path.join(self.original_data_dir, self.dataset_name),
                 os.path.join(self.preprocessed_data_dir, self.dataset_name),
@@ -285,6 +288,8 @@ class NonTGBLDataModule(LightningDataModule):
                 ],
             )
         )
+        print("val_time: ", val_time)
+        print("test_time: ", test_time)
         self.val_time = val_time
         self.test_time = test_time
 
@@ -433,19 +438,25 @@ class NonTGBLDataModule(LightningDataModule):
 
     def val_dataloader(self):
         """Return val dataloader."""
-        return get_idx_dataloader(
-            indices_list=list(range(len(self.val_data.src_node_ids))),
-            batch_size=self.batch_size_per_device,
-            shuffle=False,
-        )
+        return [
+            get_idx_dataloader(
+                indices_list=list(range(len(self.val_data.src_node_ids))),
+                batch_size=self.batch_size_per_device,
+                shuffle=False,
+            )
+            for _ in self.val_negative_sample_strategy
+        ]
 
     def test_dataloader(self):
         """Return test dataloader."""
-        return get_idx_dataloader(
-            indices_list=list(range(len(self.test_data.src_node_ids))),
-            batch_size=self.batch_size_per_device,
-            shuffle=False,
-        )
+        return [
+            get_idx_dataloader(
+                indices_list=list(range(len(self.test_data.src_node_ids))),
+                batch_size=self.batch_size_per_device,
+                shuffle=False,
+            )
+            for _ in self.test_negative_sample_strategy
+        ]
 
 
 # if __name__ == "__main__":
