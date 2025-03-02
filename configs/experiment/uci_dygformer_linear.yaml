@@ -3,8 +3,8 @@
 defaults:
   - override /data: uci
   - override /model: dygformer
-  - override /callbacks: default
   - override /trainer: gpu
+  - override /callbacks: default
 
 logger:
   wandb:
@@ -24,6 +24,7 @@ callbacks:
     monitor: val/random/ap
     mode: max
 
+
 trainer:
   min_epochs: 10
   max_epochs: 100
@@ -38,3 +39,7 @@ model:
   channel_embedding_dim: 50
   dropout: 0.1
   scale_timediff: true
+
+data:
+  val_negative_sample_strategy:
+    - random
