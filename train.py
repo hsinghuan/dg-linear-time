@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import hydra
 import lightning as L
 from lightning import Callback, LightningDataModule, LightningModule, Trainer
+from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 
@@ -30,20 +31,9 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)
     model: LightningModule = hydra.utils.instantiate(cfg.model)
     callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"))
+    print("callbacks", callbacks)
     logger: List[Logger] = instantiate_loggers(cfg.get("logger"))
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
-    # object_dict = {
-    #     "cfg": cfg,
-    #     "datamodule": datamodule,
-    #     "model": model,
-    #     "callbacks": callbacks,
-    #     "logger": logger,
-    #     "trainer": trainer,
-    # }
-
-    # if logger:
-    #     log.info("Logging hyperparameters!")
-    #     log_hyperparameters(object_dict)
 
     if cfg.get("train"):
         log.info("Starting training!")
@@ -64,79 +54,98 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         log.info("Logging hyperparameters!")
         log_hyperparameters(object_dict)
 
+    def get_ckpt_path(trainer: Trainer, monitor_metric: str) -> Optional[str]:
+        """Get the best ckpt path under the given monitor metric. If no ckpt is recorded based on
+        the monitor metric, return the first ckpt path.
+
+        Args:
+            trainer: The trainer object.
+            monitor_metric: The metric to monitor.
+        """
+        checkpoint_callbacks = [c for c in trainer.callbacks if isinstance(c, ModelCheckpoint)]
+        if len(checkpoint_callbacks) == 0:
+            return None
+        for callback in checkpoint_callbacks:
+            if callback.monitor == monitor_metric:
+                log.info(f"Best ckpt under {monitor_metric} found!")
+                return callback.best_model_path
+        log.info(
+            f"No best ckpt under the given monitor metric found! Using {checkpoint_callbacks[0].monitor} instead"
+        )
+        return checkpoint_callbacks[0].best_model_path
+
     if cfg.get("val"):
         log.info("Starting validation!")
-        ckpt_path = trainer.checkpoint_callback.best_model_path
-        if ckpt_path == "":
-            log.warning("Best ckpt not found! Using current weights for testing...")
-            ckpt_path = None
+
         if "NonTGBLDataModule" in cfg.data._target_:
-            # if model is memory-based, we need to backup and reload the memory up to train manually because we repeatedly test below
-            is_memory_based = True if cfg.model in ["tgn", "dyrep", "jodie"] else False
-            datamodule.eval_negative_sample_strategy = "random"
-            if is_memory_based:
-                model.backup_train_memory_bank()
-            trainer: Trainer = hydra.utils.instantiate(
-                cfg.trainer, callbacks=callbacks, logger=logger
-            )
-            trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
-            # logger[0].log_metrics({'val/random/ap_final': random_val_results[0]["val/random/ap_final"]})
-            if is_memory_based:
-                model.reload_train_memory_bank()
-            datamodule.eval_negative_sample_strategy = "historical"
-            trainer: Trainer = hydra.utils.instantiate(
-                cfg.trainer, callbacks=callbacks, logger=logger
-            )
-            trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
-            # logger[0].log_metrics({'val/historical/ap_final': historical_val_results[0]["val/historical/ap_final"]})
-            if is_memory_based:
-                model.reload_train_memory_bank()
-            datamodule.eval_negative_sample_strategy = "inductive"
-            trainer: Trainer = hydra.utils.instantiate(
-                cfg.trainer, callbacks=callbacks, logger=logger
-            )
-            trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
-            # logger[0].log_metrics({'val/inductive/ap_final': inductive_val_results[0]["val/inductive/ap_final"]})
+            checkpoint_callbacks = [c for c in trainer.callbacks if isinstance(c, ModelCheckpoint)]
+            best_metrics = {}
+
+            for strategy in ["random", "historical", "inductive"]:
+                for callback in checkpoint_callbacks:
+                    if callback.monitor == f"val/{strategy}/ap":
+                        best_metrics[f"val/{strategy}/ap_final"] = callback.best_model_score
+                        log.info(f"Best val/{strategy}/ap: {callback.best_model_score}")
+                        break
+
+            # Log best metrics to wandb
+            if logger:
+                for metric_name, value in best_metrics.items():
+                    logger[0].log_metrics({metric_name: value})
         else:
+            ckpt_path = get_ckpt_path(trainer, "val/random/ap")
             val_results = trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
-        log.info(f"Best ckpt path: {ckpt_path}")
 
     val_metrics = trainer.callback_metrics
 
     if cfg.get("test"):
         log.info("Starting testing!")
-        ckpt_path = trainer.checkpoint_callback.best_model_path
-        if ckpt_path == "":
-            log.warning("Best ckpt not found! Using current weights for testing...")
-            ckpt_path = None
+
         if "NonTGBLDataModule" in cfg.data._target_:
             # if model is memory-based, we need to backup and reload the memory up to validation manually because we repeatedly test below
             is_memory_based = True if cfg.model in ["tgn", "dyrep", "jodie"] else False
-            datamodule.eval_negative_sample_strategy = "random"
+            datamodule.test_negative_sample_strategy = ["random"]
             if is_memory_based:
                 model.backup_val_memory_bank()
             trainer: Trainer = hydra.utils.instantiate(
                 cfg.trainer, callbacks=callbacks, logger=logger
             )
+            log.info("Getting best ckpt under val/random/ap...")
+            ckpt_path = get_ckpt_path(trainer, "val/random/ap")
+            if ckpt_path is None:
+                log.warning("Best ckpt not found! Using current weights for random NS testing...")
             trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
             # logger[0].log_metrics({'test/random/ap_final': random_test_results[0]["test/random/ap_final"]})
+
             if is_memory_based:
                 model.reload_val_memory_bank()
-            datamodule.eval_negative_sample_strategy = "historical"
+            datamodule.test_negative_sample_strategy = ["historical"]
             trainer: Trainer = hydra.utils.instantiate(
                 cfg.trainer, callbacks=callbacks, logger=logger
             )
+            log.info("Getting best ckpt under val/historical/ap...")
+            ckpt_path = get_ckpt_path(trainer, "val/historical/ap")
+            if ckpt_path is None:
+                log.warning(
+                    "Best ckpt not found! Using current weights for historical NS testing..."
+                )
             trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
-            # logger[0].log_metrics({'test/historical/ap_final': historical_test_results[0]["test/historical/ap_final"]})
+
             if is_memory_based:
                 model.reload_val_memory_bank()
-            datamodule.eval_negative_sample_strategy = "inductive"
+            datamodule.test_negative_sample_strategy = ["inductive"]
             trainer: Trainer = hydra.utils.instantiate(
                 cfg.trainer, callbacks=callbacks, logger=logger
             )
+            log.info("Getting best ckpt under val/inductive/ap...")
+            ckpt_path = get_ckpt_path(trainer, "val/inductive/ap")
+            if ckpt_path is None:
+                log.warning(
+                    "Best ckpt not found! Using current weights for inductive NS testing..."
+                )
             trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
-            # logger[0].log_metrics({'test/inductive/ap_final': inductive_test_results[0]["test/inductive/ap_final"]})
         else:
+            ckpt_path = get_ckpt_path(trainer, "val/random/ap")
             test_results = trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
         log.info(f"Best ckpt path: {ckpt_path}")
 
