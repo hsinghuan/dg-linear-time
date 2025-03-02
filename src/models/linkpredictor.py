@@ -49,7 +49,7 @@ class LinkPredictor(L.LightningModule):
         self.train_negative_sample_strategy = (
             self.trainer.datamodule.train_negative_sample_strategy
         )
-        self.eval_negative_sample_strategy = self.trainer.datamodule.eval_negative_sample_strategy
+
         if self.train_negative_sample_strategy == "historical":
             self.train_neg_edge_sampler = NegativeEdgeSampler(
                 src_node_ids=self.train_data.src_node_ids,
@@ -64,12 +64,25 @@ class LinkPredictor(L.LightningModule):
                 dst_node_ids=self.train_data.dst_node_ids,
             )
 
+        self.val_negative_sample_strategy = self.trainer.datamodule.val_negative_sample_strategy
+        self.test_negative_sample_strategy = self.trainer.datamodule.test_negative_sample_strategy
+
         self.train_pos_scores = []
         self.train_neg_scores = []
-        self.val_pos_scores = []
-        self.val_neg_scores = []
-        self.test_pos_scores = []
-        self.test_neg_scores = []
+        # self.val_pos_scores = []
+        # self.val_neg_scores = []
+        # self.test_pos_scores = []
+        # self.test_neg_scores = []
+        # self.val_scores = {strategy: {"pos": [], "neg": []} for strategy in self.val_negative_sample_strategy}
+        # self.test_scores = {strategy: {"pos": [], "neg": []} for strategy in self.test_negative_sample_strategy}
+        self.val_scores = {
+            "pos": [],
+            "neg": {strategy: [] for strategy in self.val_negative_sample_strategy},
+        }
+        self.test_scores = {
+            "pos": [],
+            "neg": {strategy: [] for strategy in self.test_negative_sample_strategy},
+        }
 
         if self.dataset_type == "tgbl":
             self.eval_neg_edge_sampler = self.trainer.datamodule.eval_neg_edge_sampler
@@ -86,47 +99,58 @@ class LinkPredictor(L.LightningModule):
             self.val_perf_list = []
             self.test_perf_list = []
         else:
-            if self.eval_negative_sample_strategy != "random":
-                self.val_neg_edge_sampler = NegativeEdgeSampler(
-                    src_node_ids=self.full_data.src_node_ids,
-                    dst_node_ids=self.full_data.dst_node_ids,
-                    interact_times=self.full_data.node_interact_times,
-                    last_observed_time=self.train_data.node_interact_times[-1],
-                    negative_sample_strategy=self.eval_negative_sample_strategy,
-                    seed=0,
-                )
-                self.test_neg_edge_sampler = NegativeEdgeSampler(
-                    src_node_ids=self.full_data.src_node_ids,
-                    dst_node_ids=self.full_data.dst_node_ids,
-                    interact_times=self.full_data.node_interact_times,
-                    last_observed_time=self.val_data.node_interact_times[-1],
-                    negative_sample_strategy=self.eval_negative_sample_strategy,
-                    seed=2,
-                )
-            else:
-                self.val_neg_edge_sampler = NegativeEdgeSampler(
-                    src_node_ids=self.full_data.src_node_ids,
-                    dst_node_ids=self.full_data.dst_node_ids,
-                    seed=0,
-                )
-                self.test_neg_edge_sampler = NegativeEdgeSampler(
-                    src_node_ids=self.full_data.src_node_ids,
-                    dst_node_ids=self.full_data.dst_node_ids,
-                    seed=2,
-                )
+            self.val_neg_edge_sampler = {}
+            for ns_strategy in self.val_negative_sample_strategy:
+                if ns_strategy != "random":
+                    self.val_neg_edge_sampler[ns_strategy] = NegativeEdgeSampler(
+                        src_node_ids=self.full_data.src_node_ids,
+                        dst_node_ids=self.full_data.dst_node_ids,
+                        interact_times=self.full_data.node_interact_times,
+                        last_observed_time=self.train_data.node_interact_times[-1],
+                        negative_sample_strategy=ns_strategy,
+                        seed=0,
+                    )
+                else:
+                    self.val_neg_edge_sampler[ns_strategy] = NegativeEdgeSampler(
+                        src_node_ids=self.full_data.src_node_ids,
+                        dst_node_ids=self.full_data.dst_node_ids,
+                        seed=0,
+                    )
+            self.test_neg_edge_sampler = {}
+            for ns_strategy in self.test_negative_sample_strategy:
+                if ns_strategy != "random":
+                    self.test_neg_edge_sampler[ns_strategy] = NegativeEdgeSampler(
+                        src_node_ids=self.full_data.src_node_ids,
+                        dst_node_ids=self.full_data.dst_node_ids,
+                        interact_times=self.full_data.node_interact_times,
+                        last_observed_time=self.val_data.node_interact_times[-1],
+                        negative_sample_strategy=ns_strategy,
+                        seed=2,
+                    )
+                else:
+                    self.test_neg_edge_sampler[ns_strategy] = NegativeEdgeSampler(
+                        src_node_ids=self.full_data.src_node_ids,
+                        dst_node_ids=self.full_data.dst_node_ids,
+                        seed=2,
+                    )
+
             self.val_perf_list = None  # no mrr to be recorded
             self.test_perf_list = None
             self.fast_eval = False  # no need for fast evaluation (because it's already fast)
 
-    def validation_step(self, batch: torch.Tensor) -> None:
+    def validation_step(
+        self, batch: torch.Tensor, batch_idx: int, dataloader_idx: int = 0
+    ) -> None:
         """One batch of validation."""
-        self._eval_step(batch, self.val_data, "val")
+        ns_strategy = self.val_negative_sample_strategy[dataloader_idx]
+        self._eval_step(batch, self.val_data, "val", ns_strategy)
 
-    def test_step(self, batch: torch.Tensor) -> None:
+    def test_step(self, batch: torch.Tensor, batch_idx: int, dataloader_idx: int = 0) -> None:
         """One batch of testing."""
-        self._eval_step(batch, self.test_data, "test")
+        ns_strategy = self.test_negative_sample_strategy[dataloader_idx]
+        self._eval_step(batch, self.test_data, "test", ns_strategy)
 
-    def _eval_step(self, batch: torch.Tensor, data: Data, stage: str) -> None:
+    def _eval_step(self, batch: torch.Tensor, data: Data, stage: str, ns_strategy: str) -> None:
         """One batch of AP and AUC evaluation.
 
         Forward the entire batch through the model. Use this during training for model selection
@@ -170,9 +194,9 @@ class LinkPredictor(L.LightningModule):
             )
         else:
             if stage == "val":
-                eval_neg_edge_sampler = self.val_neg_edge_sampler
+                eval_neg_edge_sampler = self.val_neg_edge_sampler[ns_strategy]
             elif stage == "test":
-                eval_neg_edge_sampler = self.test_neg_edge_sampler
+                eval_neg_edge_sampler = self.test_neg_edge_sampler[ns_strategy]
 
             if eval_neg_edge_sampler.negative_sample_strategy != "random":
                 batch_neg_src_node_ids, batch_neg_dst_node_ids = eval_neg_edge_sampler.sample(
@@ -204,14 +228,20 @@ class LinkPredictor(L.LightningModule):
         labels = torch.cat((torch.ones_like(pos_scores), torch.zeros_like(neg_scores)), dim=0)
         loss = self.loss_func(input=scores, target=labels)
         if self.fit:
-            self.log(f"{stage}/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+            self.log(
+                f"{stage}/{ns_strategy}/loss", loss, on_step=True, on_epoch=True, prog_bar=True
+            )
 
         if stage == "val":
-            self.val_pos_scores.append(pos_scores)
-            self.val_neg_scores.append(neg_scores)
+            # self.val_pos_scores.append(pos_scores)
+            # self.val_neg_scores.append(neg_scores)
+            self.val_scores["pos"].append(pos_scores)
+            self.val_scores["neg"][ns_strategy].append(neg_scores)
         elif stage == "test":
-            self.test_pos_scores.append(pos_scores)
-            self.test_neg_scores.append(neg_scores)
+            # self.test_pos_scores.append(pos_scores)
+            # self.test_neg_scores.append(neg_scores)
+            self.test_scores["pos"].append(pos_scores)
+            self.test_scores["neg"][ns_strategy].append(neg_scores)
 
         if self.dataset_type == "tgbl":
             for sample_idx in range(len(batch_src_node_ids)):
@@ -259,26 +289,43 @@ class LinkPredictor(L.LightningModule):
     def on_train_epoch_end(self) -> None:
         """Aggregate training performance."""
         # print(len(self.train_pos_scores))
-        self._aggregate_eval_log("train", self.train_pos_scores, self.train_neg_scores)
+        self._aggregate_eval_log(
+            "train",
+            self.train_pos_scores,
+            self.train_neg_scores,
+            ns_strategy=self.train_negative_sample_strategy,
+        )
         self.train_pos_scores = []
         self.train_neg_scores = []
 
     def on_validation_epoch_end(self) -> None:
         """Aggregate validation performance."""
-        self._aggregate_eval_log(
-            "val", self.val_pos_scores, self.val_neg_scores, self.val_perf_list
-        )
-        self.val_pos_scores = []
-        self.val_neg_scores = []
+
+        for ns_strategy in self.val_negative_sample_strategy:
+            self._aggregate_eval_log(
+                "val",
+                self.val_scores["pos"],
+                self.val_scores["neg"][ns_strategy],
+                self.val_perf_list,
+                ns_strategy=ns_strategy,
+            )
+            self.val_scores["neg"][ns_strategy] = []
+        self.val_scores["pos"] = []
         self.val_perf_list = [] if self.dataset_type == "tgbl" else None
 
     def on_test_epoch_end(self) -> None:
         """Aggregate testing performance."""
-        self._aggregate_eval_log(
-            "test", self.test_pos_scores, self.test_neg_scores, self.test_perf_list
-        )
-        self.test_pos_scores = []
-        self.test_neg_scores = []
+
+        for ns_strategy in self.test_negative_sample_strategy:
+            self._aggregate_eval_log(
+                "test",
+                self.test_scores["pos"],
+                self.test_scores["neg"][ns_strategy],
+                self.test_perf_list,
+                ns_strategy=ns_strategy,
+            )
+            self.test_scores["neg"][ns_strategy] = []
+        self.test_scores["pos"] = []
         self.test_perf_list = [] if self.dataset_type == "tgbl" else None
 
     def _aggregate_eval_log(
@@ -287,6 +334,7 @@ class LinkPredictor(L.LightningModule):
         pos_scores: List[torch.Tensor],
         neg_scores: List[torch.Tensor],
         perf_list: List[float] = None,
+        ns_strategy: str = None,
     ) -> None:
         """Aggregate and log the evaluation performance."""
         pos_scores = torch.cat(pos_scores, dim=0)
@@ -310,19 +358,23 @@ class LinkPredictor(L.LightningModule):
                 metric_log_name = f"{stage}/{self.metric}_final"
         else:
             if self.fit:
-                if stage != "train":
-                    ap_log_name = f"{stage}/{self.eval_negative_sample_strategy}/ap"
-                    auc_log_name = f"{stage}/{self.eval_negative_sample_strategy}/auc"
-                else:
-                    ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap"
-                    auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc"
+                # if stage != "train":
+                #     ap_log_name = f"{stage}/{ns_strategy}/ap"
+                #     auc_log_name = f"{stage}/{ns_strategy}/auc"
+                # else:
+                #     ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap"
+                #     auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc"
+                ap_log_name = f"{stage}/{ns_strategy}/ap"
+                auc_log_name = f"{stage}/{ns_strategy}/auc"
             else:
-                if stage != "train":
-                    ap_log_name = f"{stage}/{self.eval_negative_sample_strategy}/ap_final"
-                    auc_log_name = f"{stage}/{self.eval_negative_sample_strategy}/auc_final"
-                else:
-                    ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap_final"
-                    auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc_final"
+                # if stage != "train":
+                #     ap_log_name = f"{stage}/{self.eval_negative_sample_strategy}/ap_final"
+                #     auc_log_name = f"{stage}/{self.eval_negative_sample_strategy}/auc_final"
+                # else:
+                #     ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap_final"
+                #     auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc_final"
+                ap_log_name = f"{stage}/{ns_strategy}/ap_final"
+                auc_log_name = f"{stage}/{ns_strategy}/auc_final"
 
         self.log(
             ap_log_name,
