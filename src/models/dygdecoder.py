@@ -44,112 +44,6 @@ class DyGDecoderModule(LinkPredictor):
         self.loss_func = nn.BCELoss()
         self.model = None  # delay model instantiation until setup()
 
-        # lists for length analysis
-        self.train_history_length_analysis = {
-            "pos": {
-                "src": {
-                    "avg_time_diffs": [],
-                    "median_time_diffs": [],
-                    "max_time_diffs": [],
-                    "num_temporal_neighbors": [],
-                },
-                "dst": {
-                    "avg_time_diffs": [],
-                    "median_time_diffs": [],
-                    "max_time_diffs": [],
-                    "num_temporal_neighbors": [],
-                },
-            },
-            "neg": {
-                "src": {
-                    "avg_time_diffs": [],
-                    "median_time_diffs": [],
-                    "max_time_diffs": [],
-                    "num_temporal_neighbors": [],
-                },
-                "dst": {
-                    "avg_time_diffs": [],
-                    "median_time_diffs": [],
-                    "max_time_diffs": [],
-                    "num_temporal_neighbors": [],
-                },
-            },
-        }
-        self.val_history_length_analysis = {
-            "pos": {
-                "src": {
-                    "avg_time_diffs": [],
-                    "median_time_diffs": [],
-                    "max_time_diffs": [],
-                    "num_temporal_neighbors": [],
-                },
-                "dst": {
-                    "avg_time_diffs": [],
-                    "median_time_diffs": [],
-                    "max_time_diffs": [],
-                    "num_temporal_neighbors": [],
-                },
-            },
-            "neg": {
-                "src": {
-                    "avg_time_diffs": [],
-                    "median_time_diffs": [],
-                    "max_time_diffs": [],
-                    "num_temporal_neighbors": [],
-                },
-                "dst": {
-                    "avg_time_diffs": [],
-                    "median_time_diffs": [],
-                    "max_time_diffs": [],
-                    "num_temporal_neighbors": [],
-                },
-            },
-        }
-        self.test_history_length_analysis = {
-            "pos": {
-                "src": {
-                    "avg_time_diffs": [],
-                    "median_time_diffs": [],
-                    "max_time_diffs": [],
-                    "num_temporal_neighbors": [],
-                },
-                "dst": {
-                    "avg_time_diffs": [],
-                    "median_time_diffs": [],
-                    "max_time_diffs": [],
-                    "num_temporal_neighbors": [],
-                },
-            },
-            "neg": {
-                "src": {
-                    "avg_time_diffs": [],
-                    "median_time_diffs": [],
-                    "max_time_diffs": [],
-                    "num_temporal_neighbors": [],
-                },
-                "dst": {
-                    "avg_time_diffs": [],
-                    "median_time_diffs": [],
-                    "max_time_diffs": [],
-                    "num_temporal_neighbors": [],
-                },
-            },
-        }
-
-        # lists for attention score analysis
-        self.test_attn_scores_analysis = {
-            "pos": {
-                "src": {
-                    "t": [],
-                    "attn_scores": [],
-                },
-                "dst": {
-                    "t": [],
-                    "attn_scores": [],
-                },
-            }
-        }
-
     def setup(self, stage: str) -> None:
         """Build model dynamically at the beginning of fit (train + validate), validate, test, or
         predict."""
@@ -228,6 +122,122 @@ class DyGDecoderModule(LinkPredictor):
         )
         self.model = nn.Sequential(backbone, link_predictor).to(self.device)
 
+        # lists for length analysis
+        self.train_history_length_analysis = {
+            "pos": {
+                "src": {
+                    "avg_time_diffs": [],
+                    "median_time_diffs": [],
+                    "max_time_diffs": [],
+                    "num_temporal_neighbors": [],
+                },
+                "dst": {
+                    "avg_time_diffs": [],
+                    "median_time_diffs": [],
+                    "max_time_diffs": [],
+                    "num_temporal_neighbors": [],
+                },
+            },
+            "neg": {
+                self.train_negative_sample_strategy: {  # Use strategy as key
+                    "src": {
+                        "avg_time_diffs": [],
+                        "median_time_diffs": [],
+                        "max_time_diffs": [],
+                        "num_temporal_neighbors": [],
+                    },
+                    "dst": {
+                        "avg_time_diffs": [],
+                        "median_time_diffs": [],
+                        "max_time_diffs": [],
+                        "num_temporal_neighbors": [],
+                    },
+                },
+            },
+        }
+
+        self.val_history_length_analysis = {
+            "pos": {
+                "src": {
+                    "avg_time_diffs": [],
+                    "median_time_diffs": [],
+                    "max_time_diffs": [],
+                    "num_temporal_neighbors": [],
+                },
+                "dst": {
+                    "avg_time_diffs": [],
+                    "median_time_diffs": [],
+                    "max_time_diffs": [],
+                    "num_temporal_neighbors": [],
+                },
+            },
+            "neg": {
+                ns_strategy: {  # Dictionary comprehension for each strategy
+                    "src": {
+                        "avg_time_diffs": [],
+                        "median_time_diffs": [],
+                        "max_time_diffs": [],
+                        "num_temporal_neighbors": [],
+                    },
+                    "dst": {
+                        "avg_time_diffs": [],
+                        "median_time_diffs": [],
+                        "max_time_diffs": [],
+                        "num_temporal_neighbors": [],
+                    },
+                }
+                for ns_strategy in self.val_negative_sample_strategy
+            },
+        }
+
+        self.test_history_length_analysis = {
+            "pos": {
+                "src": {
+                    "avg_time_diffs": [],
+                    "median_time_diffs": [],
+                    "max_time_diffs": [],
+                    "num_temporal_neighbors": [],
+                },
+                "dst": {
+                    "avg_time_diffs": [],
+                    "median_time_diffs": [],
+                    "max_time_diffs": [],
+                    "num_temporal_neighbors": [],
+                },
+            },
+            "neg": {
+                ns_strategy: {  # Dictionary comprehension for each strategy
+                    "src": {
+                        "avg_time_diffs": [],
+                        "median_time_diffs": [],
+                        "max_time_diffs": [],
+                        "num_temporal_neighbors": [],
+                    },
+                    "dst": {
+                        "avg_time_diffs": [],
+                        "median_time_diffs": [],
+                        "max_time_diffs": [],
+                        "num_temporal_neighbors": [],
+                    },
+                }
+                for ns_strategy in self.test_negative_sample_strategy
+            },
+        }
+
+        # lists for attention score analysis
+        self.test_attn_scores_analysis = {
+            "pos": {
+                "src": {
+                    "t": [],
+                    "attn_scores": [],
+                },
+                "dst": {
+                    "t": [],
+                    "attn_scores": [],
+                },
+            }
+        }
+
     def on_train_start(self):
         if self.hparams.time_encoding_method == "exponential":
             self.log(
@@ -284,54 +294,36 @@ class DyGDecoderModule(LinkPredictor):
                 neg_src_history_length_analysis,
                 neg_dst_history_length_analysis,
             ) = pred_out
-            self.train_history_length_analysis["pos"]["src"]["avg_time_diffs"].append(
-                pos_src_history_length_analysis["avg_time_diffs"]
-            )
-            self.train_history_length_analysis["pos"]["src"]["median_time_diffs"].append(
-                pos_src_history_length_analysis["median_time_diffs"]
-            )
-            self.train_history_length_analysis["pos"]["src"]["max_time_diffs"].append(
-                pos_src_history_length_analysis["max_time_diffs"]
-            )
-            self.train_history_length_analysis["pos"]["src"]["num_temporal_neighbors"].append(
-                pos_src_history_length_analysis["num_temporal_neighbors"]
-            )
-            self.train_history_length_analysis["pos"]["dst"]["avg_time_diffs"].append(
-                pos_dst_history_length_analysis["avg_time_diffs"]
-            )
-            self.train_history_length_analysis["pos"]["dst"]["median_time_diffs"].append(
-                pos_dst_history_length_analysis["median_time_diffs"]
-            )
-            self.train_history_length_analysis["pos"]["dst"]["max_time_diffs"].append(
-                pos_dst_history_length_analysis["max_time_diffs"]
-            )
-            self.train_history_length_analysis["pos"]["dst"]["num_temporal_neighbors"].append(
-                pos_dst_history_length_analysis["num_temporal_neighbors"]
-            )
-            self.train_history_length_analysis["neg"]["src"]["avg_time_diffs"].append(
-                neg_src_history_length_analysis["avg_time_diffs"]
-            )
-            self.train_history_length_analysis["neg"]["src"]["median_time_diffs"].append(
-                neg_src_history_length_analysis["median_time_diffs"]
-            )
-            self.train_history_length_analysis["neg"]["src"]["max_time_diffs"].append(
-                neg_src_history_length_analysis["max_time_diffs"]
-            )
-            self.train_history_length_analysis["neg"]["src"]["num_temporal_neighbors"].append(
-                neg_src_history_length_analysis["num_temporal_neighbors"]
-            )
-            self.train_history_length_analysis["neg"]["dst"]["avg_time_diffs"].append(
-                neg_dst_history_length_analysis["avg_time_diffs"]
-            )
-            self.train_history_length_analysis["neg"]["dst"]["median_time_diffs"].append(
-                neg_dst_history_length_analysis["median_time_diffs"]
-            )
-            self.train_history_length_analysis["neg"]["dst"]["max_time_diffs"].append(
-                neg_dst_history_length_analysis["max_time_diffs"]
-            )
-            self.train_history_length_analysis["neg"]["dst"]["num_temporal_neighbors"].append(
-                neg_dst_history_length_analysis["num_temporal_neighbors"]
-            )
+            for node_type in ["src", "dst"]:
+                history_analysis = (
+                    pos_src_history_length_analysis
+                    if node_type == "src"
+                    else pos_dst_history_length_analysis
+                )
+                for metric in [
+                    "avg_time_diffs",
+                    "median_time_diffs",
+                    "max_time_diffs",
+                    "num_temporal_neighbors",
+                ]:
+                    self.train_history_length_analysis["pos"][node_type][metric].append(
+                        history_analysis[metric]
+                    )
+            for node_type in ["src", "dst"]:
+                history_analysis = (
+                    neg_src_history_length_analysis
+                    if node_type == "src"
+                    else neg_dst_history_length_analysis
+                )
+                for metric in [
+                    "avg_time_diffs",
+                    "median_time_diffs",
+                    "max_time_diffs",
+                    "num_temporal_neighbors",
+                ]:
+                    self.train_history_length_analysis["neg"][self.train_negative_sample_strategy][
+                        node_type
+                    ][metric].append(history_analysis[metric])
         else:
             pos_scores, neg_scores = pred_out
         self.train_pos_scores.append(pos_scores.detach())
@@ -345,7 +337,7 @@ class DyGDecoderModule(LinkPredictor):
         self.log("train/loss", loss, on_step=True, on_epoch=False, prog_bar=True)
         return loss
 
-    def _eval_step(self, batch: torch.Tensor, data: Data, stage: str) -> None:
+    def _eval_step(self, batch: torch.Tensor, data: Data, stage: str, ns_strategy: str) -> None:
         """One batch of AP and AUC evaluation. Reimplement this because we might want to do length
         analysis here.
 
@@ -390,9 +382,9 @@ class DyGDecoderModule(LinkPredictor):
             )
         else:
             if stage == "val":
-                eval_neg_edge_sampler = self.val_neg_edge_sampler
+                eval_neg_edge_sampler = self.val_neg_edge_sampler[ns_strategy]
             elif stage == "test":
-                eval_neg_edge_sampler = self.test_neg_edge_sampler
+                eval_neg_edge_sampler = self.test_neg_edge_sampler[ns_strategy]
 
             if eval_neg_edge_sampler.negative_sample_strategy != "random":
                 batch_neg_src_node_ids, batch_neg_dst_node_ids = eval_neg_edge_sampler.sample(
@@ -460,118 +452,91 @@ class DyGDecoderModule(LinkPredictor):
         self.log(f"{stage}/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
 
         if stage == "val":
-            self.val_pos_scores.append(pos_scores)
-            self.val_neg_scores.append(neg_scores)
+            if ns_strategy == self.val_negative_sample_strategy[0]:
+                self.val_scores["pos"].append(pos_scores)
+            self.val_scores["neg"][ns_strategy].append(neg_scores)
             if inference_kwargs["analyze_length"]:
-                self.val_history_length_analysis["pos"]["src"]["avg_time_diffs"].append(
-                    pos_src_history_length_analysis["avg_time_diffs"]
-                )
-                self.val_history_length_analysis["pos"]["src"]["median_time_diffs"].append(
-                    pos_src_history_length_analysis["median_time_diffs"]
-                )
-                self.val_history_length_analysis["pos"]["src"]["max_time_diffs"].append(
-                    pos_src_history_length_analysis["max_time_diffs"]
-                )
-                self.val_history_length_analysis["pos"]["src"]["num_temporal_neighbors"].append(
-                    pos_src_history_length_analysis["num_temporal_neighbors"]
-                )
-                self.val_history_length_analysis["pos"]["dst"]["avg_time_diffs"].append(
-                    pos_dst_history_length_analysis["avg_time_diffs"]
-                )
-                self.val_history_length_analysis["pos"]["dst"]["median_time_diffs"].append(
-                    pos_dst_history_length_analysis["median_time_diffs"]
-                )
-                self.val_history_length_analysis["pos"]["dst"]["max_time_diffs"].append(
-                    pos_dst_history_length_analysis["max_time_diffs"]
-                )
-                self.val_history_length_analysis["pos"]["dst"]["num_temporal_neighbors"].append(
-                    pos_dst_history_length_analysis["num_temporal_neighbors"]
-                )
-                self.val_history_length_analysis["neg"]["src"]["avg_time_diffs"].append(
-                    neg_src_history_length_analysis["avg_time_diffs"]
-                )
-                self.val_history_length_analysis["neg"]["src"]["median_time_diffs"].append(
-                    neg_src_history_length_analysis["median_time_diffs"]
-                )
-                self.val_history_length_analysis["neg"]["src"]["max_time_diffs"].append(
-                    neg_src_history_length_analysis["max_time_diffs"]
-                )
-                self.val_history_length_analysis["neg"]["src"]["num_temporal_neighbors"].append(
-                    neg_src_history_length_analysis["num_temporal_neighbors"]
-                )
-                self.val_history_length_analysis["neg"]["dst"]["avg_time_diffs"].append(
-                    neg_dst_history_length_analysis["avg_time_diffs"]
-                )
-                self.val_history_length_analysis["neg"]["dst"]["median_time_diffs"].append(
-                    neg_dst_history_length_analysis["median_time_diffs"]
-                )
-                self.val_history_length_analysis["neg"]["dst"]["max_time_diffs"].append(
-                    neg_dst_history_length_analysis["max_time_diffs"]
-                )
-                self.val_history_length_analysis["neg"]["dst"]["num_temporal_neighbors"].append(
-                    neg_dst_history_length_analysis["num_temporal_neighbors"]
-                )
+                if ns_strategy == self.val_negative_sample_strategy[0]:
+                    for node_type in ["src", "dst"]:
+                        history_analysis = (
+                            pos_src_history_length_analysis
+                            if node_type == "src"
+                            else pos_dst_history_length_analysis
+                        )
+                        for metric in [
+                            "avg_time_diffs",
+                            "median_time_diffs",
+                            "max_time_diffs",
+                            "num_temporal_neighbors",
+                        ]:
+                            self.val_history_length_analysis["pos"][node_type][metric].append(
+                                history_analysis[metric]
+                            )
+                for node_type in ["src", "dst"]:
+                    history_analysis = (
+                        neg_src_history_length_analysis
+                        if node_type == "src"
+                        else neg_dst_history_length_analysis
+                    )
+                    for metric in [
+                        "avg_time_diffs",
+                        "median_time_diffs",
+                        "max_time_diffs",
+                        "num_temporal_neighbors",
+                    ]:
+                        self.val_history_length_analysis["neg"][ns_strategy][node_type][
+                            metric
+                        ].append(history_analysis[metric])
         elif stage == "test":
-            self.test_pos_scores.append(pos_scores)
-            self.test_neg_scores.append(neg_scores)
+            if ns_strategy == self.test_negative_sample_strategy[0]:
+                self.test_scores["pos"].append(pos_scores)
+            self.test_scores["neg"][ns_strategy].append(neg_scores)
             if inference_kwargs["analyze_length"]:
-                self.test_history_length_analysis["pos"]["src"]["avg_time_diffs"].append(
-                    pos_src_history_length_analysis["avg_time_diffs"]
-                )
-                self.test_history_length_analysis["pos"]["src"]["median_time_diffs"].append(
-                    pos_src_history_length_analysis["median_time_diffs"]
-                )
-                self.test_history_length_analysis["pos"]["src"]["max_time_diffs"].append(
-                    pos_src_history_length_analysis["max_time_diffs"]
-                )
-                self.test_history_length_analysis["pos"]["src"]["num_temporal_neighbors"].append(
-                    pos_src_history_length_analysis["num_temporal_neighbors"]
-                )
-                self.test_history_length_analysis["pos"]["dst"]["avg_time_diffs"].append(
-                    pos_dst_history_length_analysis["avg_time_diffs"]
-                )
-                self.test_history_length_analysis["pos"]["dst"]["median_time_diffs"].append(
-                    pos_dst_history_length_analysis["median_time_diffs"]
-                )
-                self.test_history_length_analysis["pos"]["dst"]["max_time_diffs"].append(
-                    pos_dst_history_length_analysis["max_time_diffs"]
-                )
-                self.test_history_length_analysis["pos"]["dst"]["num_temporal_neighbors"].append(
-                    pos_dst_history_length_analysis["num_temporal_neighbors"]
-                )
-                self.test_history_length_analysis["neg"]["src"]["avg_time_diffs"].append(
-                    neg_src_history_length_analysis["avg_time_diffs"]
-                )
-                self.test_history_length_analysis["neg"]["src"]["median_time_diffs"].append(
-                    neg_src_history_length_analysis["median_time_diffs"]
-                )
-                self.test_history_length_analysis["neg"]["src"]["max_time_diffs"].append(
-                    neg_src_history_length_analysis["max_time_diffs"]
-                )
-                self.test_history_length_analysis["neg"]["src"]["num_temporal_neighbors"].append(
-                    neg_src_history_length_analysis["num_temporal_neighbors"]
-                )
-                self.test_history_length_analysis["neg"]["dst"]["avg_time_diffs"].append(
-                    neg_dst_history_length_analysis["avg_time_diffs"]
-                )
-                self.test_history_length_analysis["neg"]["dst"]["median_time_diffs"].append(
-                    neg_dst_history_length_analysis["median_time_diffs"]
-                )
-                self.test_history_length_analysis["neg"]["dst"]["max_time_diffs"].append(
-                    neg_dst_history_length_analysis["max_time_diffs"]
-                )
-                self.test_history_length_analysis["neg"]["dst"]["num_temporal_neighbors"].append(
-                    neg_dst_history_length_analysis["num_temporal_neighbors"]
-                )
+                if ns_strategy == self.test_negative_sample_strategy[0]:
+                    for node_type in ["src", "dst"]:
+                        history_analysis = (
+                            pos_src_history_length_analysis
+                            if node_type == "src"
+                            else pos_dst_history_length_analysis
+                        )
+                        for metric in [
+                            "avg_time_diffs",
+                            "median_time_diffs",
+                            "max_time_diffs",
+                            "num_temporal_neighbors",
+                        ]:
+                            self.test_history_length_analysis["pos"][node_type][metric].append(
+                                history_analysis[metric]
+                            )
+                for node_type in ["src", "dst"]:
+                    history_analysis = (
+                        neg_src_history_length_analysis
+                        if node_type == "src"
+                        else neg_dst_history_length_analysis
+                    )
+                    for metric in [
+                        "avg_time_diffs",
+                        "median_time_diffs",
+                        "max_time_diffs",
+                        "num_temporal_neighbors",
+                    ]:
+                        self.test_history_length_analysis["neg"][ns_strategy][node_type][
+                            metric
+                        ].append(history_analysis[metric])
             if inference_kwargs["analyze_attn_scores"]:
-                self.test_attn_scores_analysis["pos"]["src"]["t"].append(pos_src_attn_scores["t"])
-                self.test_attn_scores_analysis["pos"]["src"]["attn_scores"].append(
-                    pos_src_attn_scores["attn_scores"]
-                )
-                self.test_attn_scores_analysis["pos"]["dst"]["t"].append(pos_dst_attn_scores["t"])
-                self.test_attn_scores_analysis["pos"]["dst"]["attn_scores"].append(
-                    pos_dst_attn_scores["attn_scores"]
-                )
+                if ns_strategy == self.test_negative_sample_strategy[0]:
+                    self.test_attn_scores_analysis["pos"]["src"]["t"].append(
+                        pos_src_attn_scores["t"]
+                    )
+                    self.test_attn_scores_analysis["pos"]["src"]["attn_scores"].append(
+                        pos_src_attn_scores["attn_scores"]
+                    )
+                    self.test_attn_scores_analysis["pos"]["dst"]["t"].append(
+                        pos_dst_attn_scores["t"]
+                    )
+                    self.test_attn_scores_analysis["pos"]["dst"]["attn_scores"].append(
+                        pos_dst_attn_scores["attn_scores"]
+                    )
 
         if self.dataset_type == "tgbl":
             for sample_idx in range(len(batch_src_node_ids)):
@@ -781,6 +746,7 @@ class DyGDecoderModule(LinkPredictor):
             "train",
             self.train_pos_scores,
             self.train_neg_scores,
+            ns_strategy=self.train_negative_sample_strategy,
             analyze_length=analyze_length,
             length_analysis=self.train_history_length_analysis,
         )
@@ -803,17 +769,19 @@ class DyGDecoderModule(LinkPredictor):
                     },
                 },
                 "neg": {
-                    "src": {
-                        "avg_time_diffs": [],
-                        "median_time_diffs": [],
-                        "max_time_diffs": [],
-                        "num_temporal_neighbors": [],
-                    },
-                    "dst": {
-                        "avg_time_diffs": [],
-                        "median_time_diffs": [],
-                        "max_time_diffs": [],
-                        "num_temporal_neighbors": [],
+                    self.train_negative_sample_strategy: {
+                        "src": {
+                            "avg_time_diffs": [],
+                            "median_time_diffs": [],
+                            "max_time_diffs": [],
+                            "num_temporal_neighbors": [],
+                        },
+                        "dst": {
+                            "avg_time_diffs": [],
+                            "median_time_diffs": [],
+                            "max_time_diffs": [],
+                            "num_temporal_neighbors": [],
+                        },
                     },
                 },
             }
@@ -824,16 +792,18 @@ class DyGDecoderModule(LinkPredictor):
         Reimplement this because we want to analyze the history length.
         """
         analyze_length = not self.fit
-        self._aggregate_eval_log(
-            "val",
-            self.val_pos_scores,
-            self.val_neg_scores,
-            self.val_perf_list,
-            analyze_length=analyze_length,
-            length_analysis=self.val_history_length_analysis,
-        )
-        self.val_pos_scores = []
-        self.val_neg_scores = []
+        for ns_strategy in self.val_negative_sample_strategy:
+            self._aggregate_eval_log(
+                "val",
+                self.val_scores["pos"],
+                self.val_scores["neg"][ns_strategy],
+                self.val_perf_list,
+                ns_strategy=ns_strategy,
+                analyze_length=analyze_length,
+                length_analysis=self.val_history_length_analysis,
+            )
+            self.val_scores["neg"][ns_strategy] = []
+        self.val_scores["pos"] = []
         self.val_perf_list = [] if self.dataset_type == "tgbl" else None
         if analyze_length:
             self.val_history_length_analysis = {
@@ -852,18 +822,21 @@ class DyGDecoderModule(LinkPredictor):
                     },
                 },
                 "neg": {
-                    "src": {
-                        "avg_time_diffs": [],
-                        "median_time_diffs": [],
-                        "max_time_diffs": [],
-                        "num_temporal_neighbors": [],
-                    },
-                    "dst": {
-                        "avg_time_diffs": [],
-                        "median_time_diffs": [],
-                        "max_time_diffs": [],
-                        "num_temporal_neighbors": [],
-                    },
+                    ns_strategy: {
+                        "src": {
+                            "avg_time_diffs": [],
+                            "median_time_diffs": [],
+                            "max_time_diffs": [],
+                            "num_temporal_neighbors": [],
+                        },
+                        "dst": {
+                            "avg_time_diffs": [],
+                            "median_time_diffs": [],
+                            "max_time_diffs": [],
+                            "num_temporal_neighbors": [],
+                        },
+                    }
+                    for ns_strategy in self.val_negative_sample_strategy
                 },
             }
 
@@ -873,18 +846,20 @@ class DyGDecoderModule(LinkPredictor):
         Reimplement this because we want to analyze the history length.
         """
         analyze_length = not self.fit
-        self._aggregate_eval_log(
-            "test",
-            self.test_pos_scores,
-            self.test_neg_scores,
-            self.test_perf_list,
-            analyze_length=analyze_length,
-            length_analysis=self.test_history_length_analysis,
-            analyze_attn_scores=self.hparams.analyze_attn_scores,
-            attn_scores_analysis=self.test_attn_scores_analysis,
-        )
-        self.test_pos_scores = []
-        self.test_neg_scores = []
+        for ns_strategy in self.test_negative_sample_strategy:
+            self._aggregate_eval_log(
+                "test",
+                self.test_scores["pos"],
+                self.test_scores["neg"][ns_strategy],
+                self.test_perf_list,
+                ns_strategy=ns_strategy,
+                analyze_length=analyze_length,
+                length_analysis=self.test_history_length_analysis,
+                analyze_attn_scores=self.hparams.analyze_attn_scores,
+                attn_scores_analysis=self.test_attn_scores_analysis,
+            )
+            self.test_scores["neg"][ns_strategy] = []
+        self.test_scores["pos"] = []
         self.test_perf_list = [] if self.dataset_type == "tgbl" else None
         if analyze_length:
             self.test_history_length_analysis = {
@@ -903,18 +878,21 @@ class DyGDecoderModule(LinkPredictor):
                     },
                 },
                 "neg": {
-                    "src": {
-                        "avg_time_diffs": [],
-                        "median_time_diffs": [],
-                        "max_time_diffs": [],
-                        "num_temporal_neighbors": [],
-                    },
-                    "dst": {
-                        "avg_time_diffs": [],
-                        "median_time_diffs": [],
-                        "max_time_diffs": [],
-                        "num_temporal_neighbors": [],
-                    },
+                    ns_strategy: {
+                        "src": {
+                            "avg_time_diffs": [],
+                            "median_time_diffs": [],
+                            "max_time_diffs": [],
+                            "num_temporal_neighbors": [],
+                        },
+                        "dst": {
+                            "avg_time_diffs": [],
+                            "median_time_diffs": [],
+                            "max_time_diffs": [],
+                            "num_temporal_neighbors": [],
+                        },
+                    }
+                    for ns_strategy in self.test_negative_sample_strategy
                 },
             }
         if self.hparams.analyze_attn_scores:
@@ -937,6 +915,7 @@ class DyGDecoderModule(LinkPredictor):
         pos_scores: List[torch.Tensor],
         neg_scores: List[torch.Tensor],
         perf_list: List[float] = None,
+        ns_strategy: str = None,
         analyze_length: bool = False,
         length_analysis: Dict[str, Dict[str, Dict[str, List[float]]]] = None,
         analyze_attn_scores: bool = False,
@@ -967,19 +946,23 @@ class DyGDecoderModule(LinkPredictor):
                 metric_log_name = f"{stage}/{self.metric}_final"
         else:
             if self.fit:
-                if stage != "train":
-                    ap_log_name = f"{stage}/{self.eval_negative_sample_strategy}/ap"
-                    auc_log_name = f"{stage}/{self.eval_negative_sample_strategy}/auc"
-                else:
-                    ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap"
-                    auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc"
+                # if stage != "train":
+                #     ap_log_name = f"{stage}/{self.eval_negative_sample_strategy}/ap"
+                #     auc_log_name = f"{stage}/{self.eval_negative_sample_strategy}/auc"
+                # else:
+                #     ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap"
+                #     auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc"
+                ap_log_name = f"{stage}/{ns_strategy}/ap"
+                auc_log_name = f"{stage}/{ns_strategy}/auc"
             else:
-                if stage != "train":
-                    ap_log_name = f"{stage}/{self.eval_negative_sample_strategy}/ap_final"
-                    auc_log_name = f"{stage}/{self.eval_negative_sample_strategy}/auc_final"
-                else:
-                    ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap_final"
-                    auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc_final"
+                # if stage != "train":
+                #     ap_log_name = f"{stage}/{self.eval_negative_sample_strategy}/ap_final"
+                #     auc_log_name = f"{stage}/{self.eval_negative_sample_strategy}/auc_final"
+                # else:
+                #     ap_log_name = f"{stage}/{self.train_negative_sample_strategy}/ap_final"
+                #     auc_log_name = f"{stage}/{self.train_negative_sample_strategy}/auc_final"
+                ap_log_name = f"{stage}/{ns_strategy}/ap_final"
+                auc_log_name = f"{stage}/{ns_strategy}/auc_final"
 
         self.log(
             ap_log_name,
@@ -1003,67 +986,47 @@ class DyGDecoderModule(LinkPredictor):
             )
 
         if analyze_length:
-            length_analysis["pos"]["src"]["avg_time_diffs"] = np.concatenate(
-                length_analysis["pos"]["src"]["avg_time_diffs"]
-            )
-            length_analysis["pos"]["src"]["median_time_diffs"] = np.concatenate(
-                length_analysis["pos"]["src"]["median_time_diffs"]
-            )
-            length_analysis["pos"]["src"]["max_time_diffs"] = np.concatenate(
-                length_analysis["pos"]["src"]["max_time_diffs"]
-            )
-            length_analysis["pos"]["src"]["num_temporal_neighbors"] = np.concatenate(
-                length_analysis["pos"]["src"]["num_temporal_neighbors"]
-            )
-
-            length_analysis["pos"]["dst"]["avg_time_diffs"] = np.concatenate(
-                length_analysis["pos"]["dst"]["avg_time_diffs"]
-            )
-            length_analysis["pos"]["dst"]["median_time_diffs"] = np.concatenate(
-                length_analysis["pos"]["dst"]["median_time_diffs"]
-            )
-            length_analysis["pos"]["dst"]["max_time_diffs"] = np.concatenate(
-                length_analysis["pos"]["dst"]["max_time_diffs"]
-            )
-            length_analysis["pos"]["dst"]["num_temporal_neighbors"] = np.concatenate(
-                length_analysis["pos"]["dst"]["num_temporal_neighbors"]
-            )
-
-            length_analysis["neg"]["src"]["avg_time_diffs"] = np.concatenate(
-                length_analysis["neg"]["src"]["avg_time_diffs"]
-            )
-            length_analysis["neg"]["src"]["median_time_diffs"] = np.concatenate(
-                length_analysis["neg"]["src"]["median_time_diffs"]
-            )
-            length_analysis["neg"]["src"]["max_time_diffs"] = np.concatenate(
-                length_analysis["neg"]["src"]["max_time_diffs"]
-            )
-            length_analysis["neg"]["src"]["num_temporal_neighbors"] = np.concatenate(
-                length_analysis["neg"]["src"]["num_temporal_neighbors"]
-            )
-
-            length_analysis["neg"]["dst"]["avg_time_diffs"] = np.concatenate(
-                length_analysis["neg"]["dst"]["avg_time_diffs"]
-            )
-            length_analysis["neg"]["dst"]["median_time_diffs"] = np.concatenate(
-                length_analysis["neg"]["dst"]["median_time_diffs"]
-            )
-            length_analysis["neg"]["dst"]["max_time_diffs"] = np.concatenate(
-                length_analysis["neg"]["dst"]["max_time_diffs"]
-            )
-            length_analysis["neg"]["dst"]["num_temporal_neighbors"] = np.concatenate(
-                length_analysis["neg"]["dst"]["num_temporal_neighbors"]
-            )
+            if (stage == "val" and ns_strategy == self.val_negative_sample_strategy[0]) or (
+                stage == "test" and ns_strategy == self.test_negative_sample_strategy[0]
+            ):  # don't need to repeatedly concatenate positive history length analysis
+                for metric in [
+                    "avg_time_diffs",
+                    "median_time_diffs",
+                    "max_time_diffs",
+                    "num_temporal_neighbors",
+                ]:
+                    length_analysis["pos"]["src"][metric] = np.concatenate(
+                        length_analysis["pos"]["src"][metric]
+                    )
+                    length_analysis["pos"]["dst"][metric] = np.concatenate(
+                        length_analysis["pos"]["dst"][metric]
+                    )
+            for metric in [
+                "avg_time_diffs",
+                "median_time_diffs",
+                "max_time_diffs",
+                "num_temporal_neighbors",
+            ]:
+                length_analysis["neg"][ns_strategy]["src"][metric] = np.concatenate(
+                    length_analysis["neg"][ns_strategy]["src"][metric]
+                )
+                length_analysis["neg"][ns_strategy]["dst"][metric] = np.concatenate(
+                    length_analysis["neg"][ns_strategy]["dst"][metric]
+                )
 
             length_analysis["pos"]["scores"] = pos_scores.cpu().numpy()
-            length_analysis["neg"]["scores"] = neg_scores.cpu().numpy()
+            length_analysis["neg"][ns_strategy]["scores"] = neg_scores.cpu().numpy()
+            ckpt_length_analysis = {
+                "pos": length_analysis["pos"],
+                "neg": length_analysis["neg"][ns_strategy],
+            }
             checkpoint_dir = self.trainer.checkpoint_callback.dirpath
             if checkpoint_dir is not None:
                 if not os.path.exists(checkpoint_dir):
                     os.makedirs(checkpoint_dir)
                 torch.save(
-                    length_analysis,
-                    f"{checkpoint_dir}/{stage}_{self.eval_negative_sample_strategy}_length_analysis.pt",
+                    ckpt_length_analysis,
+                    f"{checkpoint_dir}/{stage}_{ns_strategy}_length_analysis.pt",
                 )
 
         if analyze_attn_scores:
@@ -1086,5 +1049,5 @@ class DyGDecoderModule(LinkPredictor):
                     os.makedirs(checkpoint_dir)
                 torch.save(
                     attn_scores_analysis,
-                    f"{checkpoint_dir}/{stage}_{self.eval_negative_sample_strategy}_attn_scores_analysis.pt",
+                    f"{checkpoint_dir}/{stage}_{self.train_negative_sample_strategy}_attn_scores_analysis.pt",
                 )
