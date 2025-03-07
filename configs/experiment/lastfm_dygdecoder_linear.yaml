@@ -37,3 +37,4 @@ model:
   scale_timediff: true
   embed_method: separate
   time_encoding_method: linear
+  time_feat_dim: 1
