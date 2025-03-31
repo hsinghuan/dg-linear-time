@@ -16,7 +16,7 @@ mkdir original
 mkdir preprocessed
 ```
 
-3. Download **UCI**, **Wikipedia**, **Enron**, **Reddit**, and **USLegis** from this [link](https://zenodo.org/records/7213796#.Y1cO6y8r30o) to `datasets/original` and unzip them
+3. Download **UCI**, **Wikipedia**, **Enron**, **Reddit**, **LastFM**, and **USLegis** from this [link](https://zenodo.org/records/7213796#.Y1cO6y8r30o) to `datasets/original` and unzip them
 
 ## Build the Environment
 
