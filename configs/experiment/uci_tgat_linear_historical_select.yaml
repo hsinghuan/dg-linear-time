@@ -36,4 +36,5 @@ model:
   time_encoding_method: linear
 
 data:
-  eval_negative_sample_strategy: historical
+  val_negative_sample_strategy:
+    - historical

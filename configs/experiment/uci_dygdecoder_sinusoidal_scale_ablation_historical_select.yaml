@@ -40,4 +40,5 @@ model:
   inter_event_time: false
 
 data:
-  eval_negative_sample_strategy: historical
+  val_negative_sample_strategy:
+    - historical
