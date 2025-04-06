@@ -1,5 +1,7 @@
 # dg-shift
 
+This repository contains the code for the paper "Between Linear and Sinusoidal: Rethinking the Time Encoder in Dynamic Graph Learning".
+
 ## Dataset Preparation
 
 1. Create dataset directory
