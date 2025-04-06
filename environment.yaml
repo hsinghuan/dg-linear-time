@@ -1,4 +1,4 @@
-name: dg-shift
+name: dg-linear-time
 channels:
   - pytorch
   - pyg
