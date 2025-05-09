@@ -1,6 +1,6 @@
-# dg-shift
+# dg-linear-time
 
-This repository contains the code for the paper "Between Linear and Sinusoidal: Rethinking the Time Encoder in Dynamic Graph Learning".
+This repository contains the code for the paper ["Between Linear and Sinusoidal: Rethinking the Time Encoder in Dynamic Graph Learning"](https://arxiv.org/abs/2504.08129). Much of the code is inherited and refactored from [DyGLib](https://github.com/yule-BUAA/DyGLib).
 
 ## Dataset Preparation
 
