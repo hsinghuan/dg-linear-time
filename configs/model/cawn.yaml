@@ -1,0 +1,19 @@
+_target_: src.models.cawn.CAWNModule
+
+optimizer:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.0001
+  weight_decay: 0.0
+
+time_feat_dim: 100
+position_feat_dim: 172
+
+dropout: 0.1
+num_neighbors: 32
+walk_length: 1
+num_walk_heads: 8
+time_scaling_factor: 1e-6
+sample_neighbor_strategy: time_interval_aware
+time_encoding_method: sinusoidal
+scale_timediff: false

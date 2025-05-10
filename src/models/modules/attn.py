@@ -2,9 +2,12 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class MultiHeadAttention(nn.Module):
+    """Multi-head Attention module."""
+
     def __init__(
         self,
         node_feat_dim: int,
@@ -132,3 +135,77 @@ class MultiHeadAttention(nn.Module):
         attention_scores = attention_scores.squeeze(dim=2)
 
         return output, attention_scores
+
+
+class TransformerEncoder(nn.Module):
+    """Transformer encoder."""
+
+    def __init__(self, attention_dim: int, num_heads: int, dropout: float = 0.1):
+        """Transformer encoder.
+
+        :param attention_dim: int, dimension of the attention vector
+        :param num_heads: int, number of attention heads
+        :param dropout: float, dropout rate
+        """
+        super().__init__()
+        # use the MultiheadAttention implemented by PyTorch
+        self.multi_head_attention = nn.MultiheadAttention(
+            embed_dim=attention_dim, num_heads=num_heads, dropout=dropout
+        )
+
+        self.dropout = nn.Dropout(dropout)
+
+        self.linear_layers = nn.ModuleList(
+            [
+                nn.Linear(in_features=attention_dim, out_features=4 * attention_dim),
+                nn.Linear(in_features=4 * attention_dim, out_features=attention_dim),
+            ]
+        )
+        self.norm_layers = nn.ModuleList(
+            [nn.LayerNorm(attention_dim), nn.LayerNorm(attention_dim)]
+        )
+
+    def forward(
+        self,
+        inputs_query: torch.Tensor,
+        inputs_key: torch.Tensor = None,
+        inputs_value: torch.Tensor = None,
+        neighbor_masks: np.ndarray = None,
+    ):
+        """Encode the inputs by Transformer encoder :param inputs_query: Tensor, shape (batch_size,
+        target_seq_length, self.attention_dim) :param inputs_key: Tensor, shape (batch_size,
+        source_seq_length, self.attention_dim) :param inputs_value: Tensor, shape (batch_size,
+        source_seq_length, self.attention_dim) :param neighbor_masks: ndarray, shape (batch_size,
+        source_seq_length), used to create mask of neighbors for nodes in the batch :return:"""
+        if inputs_key is None or inputs_value is None:
+            assert inputs_key is None and inputs_value is None
+            inputs_key = inputs_value = inputs_query
+        # note that the MultiheadAttention module accept input data with shape (seq_length, batch_size, input_dim), so we need to transpose the input
+        # transposed_inputs_query, Tensor, shape (target_seq_length, batch_size, self.attention_dim)
+        # transposed_inputs_key, Tensor, shape (source_seq_length, batch_size, self.attention_dim)
+        # transposed_inputs_value, Tensor, shape (source_seq_length, batch_size, self.attention_dim)
+        transposed_inputs_query, transposed_inputs_key, transposed_inputs_value = (
+            inputs_query.transpose(0, 1),
+            inputs_key.transpose(0, 1),
+            inputs_value.transpose(0, 1),
+        )
+
+        if neighbor_masks is not None:
+            # Tensor, shape (batch_size, source_seq_length)
+            neighbor_masks = torch.from_numpy(neighbor_masks).to(inputs_query.device) == 0
+
+        # Tensor, shape (batch_size, target_seq_length, self.attention_dim)
+        hidden_states = self.multi_head_attention(
+            query=transposed_inputs_query,
+            key=transposed_inputs_key,
+            value=transposed_inputs_value,
+            key_padding_mask=neighbor_masks,
+        )[0].transpose(0, 1)
+        # Tensor, shape (batch_size, target_seq_length, self.attention_dim)
+        outputs = self.norm_layers[0](inputs_query + self.dropout(hidden_states))
+        # Tensor, shape (batch_size, target_seq_length, self.attention_dim)
+        hidden_states = self.linear_layers[1](self.dropout(F.relu(self.linear_layers[0](outputs))))
+        # Tensor, shape (batch_size, target_seq_length, self.attention_dim)
+        outputs = self.norm_layers[1](outputs + self.dropout(hidden_states))
+
+        return outputs
