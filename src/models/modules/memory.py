@@ -79,7 +79,9 @@ class MemoryModel(torch.nn.Module):
         )
 
         if time_encoding_method == "sinusoidal":
-            self.time_encoder = CosineTimeEncoder(time_dim=time_feat_dim)
+            self.time_encoder = CosineTimeEncoder(
+                time_dim=time_feat_dim, mean=avg_time_diff, std=std_time_diff
+            )
         elif time_encoding_method == "linear":
             self.time_encoder = LinearTimeEncoder(
                 time_dim=time_feat_dim, mean=avg_time_diff, std=std_time_diff

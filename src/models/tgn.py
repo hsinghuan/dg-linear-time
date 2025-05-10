@@ -17,11 +17,11 @@ class TGNModule(LinkPredictor):
         self,
         optimizer: torch.optim.Optimizer,
         time_feat_dim: int,
-        output_dim: int,
         num_layers: int,
         num_heads: int,
         dropout: float,
         num_neighbors: int,
+        output_dim: int = None,
         sample_neighbor_strategy: str = "recent",
         time_encoding_method: str = "sinusoidal",
         scale_timediff: bool = False,
@@ -32,10 +32,6 @@ class TGNModule(LinkPredictor):
     def setup(self, stage: str) -> None:
         """Build model dynamically at the beginning of fit (train + validate), validate, test, or
         predict."""
-        if stage == "test":
-            assert (
-                self.is_validation_done
-            ), "Validation is not done before testing. Please validate first so that the memory is updated to validation."
         super().setup(stage)
         output_dim = (
             self.hparams.output_dim
@@ -68,6 +64,7 @@ class TGNModule(LinkPredictor):
             self.avg_time_diff = np.nanmean(avg_time_diffs_per_tgt_edge)
             self.std_time_diff = np.nanstd(avg_time_diffs_per_tgt_edge)
             self.median_time_diff = np.nanmean(median_time_diffs_per_tgt_edge)
+            print(f"avg_time_diff: {self.avg_time_diff}, std_time_diff: {self.std_time_diff}")
         else:
             self.avg_time_diff = 0
             self.median_time_diff = None
@@ -89,9 +86,9 @@ class TGNModule(LinkPredictor):
             device=self.device,
         )
         head = MergeLayer(
-            input_dim1=self.hparams.output_dim,
-            input_dim2=self.hparams.output_dim,
-            hidden_dim=self.hparams.output_dim,
+            input_dim1=output_dim,
+            input_dim2=output_dim,
+            hidden_dim=output_dim,
             output_dim=1,
         )
         self.model = nn.Sequential(backbone, head).to(self.device)
@@ -176,13 +173,13 @@ class TGNModule(LinkPredictor):
         The flag will be checked during setup() called by trainer.test().
         """
         # validation is done at either trainer.fit() or trainer.validate()
-        if not self.fit:
-            self.is_validation_done = True
-        else:
+        if self.fit:
             # if validation is done during trainer.fit(), we need to reload the train backup memory bank after validation for saving
             # because the memory bank is updated (contaminated) during validation
             # self.model[0].memory_bank.reload_memory_bank(self.train_backup_memory_bank)
             self.reload_train_memory_bank()
+        else:
+            print("validation not during fitting")
 
     def on_test_epoch_start(self) -> None:
         """Set the neighbor sampler for testing."""
@@ -212,7 +209,7 @@ class TGNModule(LinkPredictor):
         neg_src: np.ndarray,
         neg_dst: np.ndarray,
         neg_t: np.ndarray,
-        **kwargs
+        **kwargs,
     ):
         """Predict the probabilities/scores of (pos_src[i], pos_dst[i]) happening at time pos_t[i]
         and (neg_src[i], neg_dst[i]) happening at time neg_t[i]."""

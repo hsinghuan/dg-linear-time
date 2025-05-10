@@ -74,10 +74,15 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         )
         return checkpoint_callbacks[0].best_model_path
 
+    model_name = cfg.model._target_.split(".")[-2]
+    is_memory_based = True if model_name in ["tgn"] else False
+    log.info(f"is_memory_based: {is_memory_based} model_name: {model_name}")
     if cfg.get("val"):
         log.info("Starting validation!")
 
-        if "NonTGBLDataModule" in cfg.data._target_:
+        if (
+            "NonTGBLDataModule" in cfg.data._target_ and not is_memory_based
+        ):  # directly use past recorded scores of the best ckpt
             checkpoint_callbacks = [c for c in trainer.callbacks if isinstance(c, ModelCheckpoint)]
             best_metrics = {}
 
@@ -92,9 +97,13 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
             if logger:
                 for metric_name, value in best_metrics.items():
                     logger[0].log_metrics({metric_name: value})
-        else:
+        else:  # for memory-based method, we validate the model again to refresh validation memory with the best ckpt
             ckpt_path = get_ckpt_path(trainer, "val/random/ap")
+            # if model_name == "tgn":
+            #     print(model.model[0].memory_bank.node_last_updated_times)
             val_results = trainer.validate(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            # if model_name == "tgn":
+            #     print(model.model[0].memory_bank.node_last_updated_times)
 
     val_metrics = trainer.callback_metrics
 
@@ -103,7 +112,6 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
         if "NonTGBLDataModule" in cfg.data._target_:
             # if model is memory-based, we need to backup and reload the memory up to validation manually because we repeatedly test below
-            is_memory_based = True if cfg.model in ["tgn", "dyrep", "jodie"] else False
             datamodule.test_negative_sample_strategy = ["random"]
             if is_memory_based:
                 model.backup_val_memory_bank()
@@ -114,7 +122,11 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
             ckpt_path = get_ckpt_path(trainer, "val/random/ap")
             if ckpt_path is None:
                 log.warning("Best ckpt not found! Using current weights for random NS testing...")
+            # if model_name == "tgn":
+            #     print(model.model[0].memory_bank.node_last_updated_times)
             trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            # if model_name == "tgn":
+            #     print(model.model[0].memory_bank.node_last_updated_times)
             # logger[0].log_metrics({'test/random/ap_final': random_test_results[0]["test/random/ap_final"]})
 
             if is_memory_based:
@@ -129,7 +141,11 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
                 log.warning(
                     "Best ckpt not found! Using current weights for historical NS testing..."
                 )
+            # if model_name == "tgn":
+            #     print(model.model[0].memory_bank.node_last_updated_times)
             trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            # if model_name == "tgn":
+            #     print(model.model[0].memory_bank.node_last_updated_times)
 
             if is_memory_based:
                 model.reload_val_memory_bank()

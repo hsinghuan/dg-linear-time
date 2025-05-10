@@ -1,4 +1,4 @@
-# Copied from DyGLib_TGB: https://github.com/hsinghuan/DyGLib_TGB/blob/master/utils/DataLoader.py
+# Copied from DyGLib: https://github.com/yule-BUAA/DyGLib/blob/master/utils/utils.py
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
